@@ -1,4 +1,4 @@
-virtual-life
+VirtualLife
 ============
 
 VirtualLife is a life simulator. 
