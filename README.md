@@ -27,4 +27,5 @@ This is a proposed roadmap, with ideas more or less structured and/or detailled.
 4. Add some ressources to the environment, and relevant functionnalities in the cells (ressources consumption, transformation, ...)
 
 *. Add some "social" functionnalities between the cells (interaction, ressource exchange, ...)
+
 *. Add the sexual reproduction functionnality ()
