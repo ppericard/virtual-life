@@ -26,6 +26,6 @@ This is a proposed roadmap, with ideas more or less structured and/or detailled.
 3. Introduce the notion of "species", which are cells instanciated with different parameters, and that will have different behaviors
 4. Add some ressources to the environment, and relevant functionnalities in the cells (ressources consumption, transformation, ...)
 
-*. Add some "social" functionnalities between the cells (interaction, ressource exchange, ...)
-
-*. Add the sexual reproduction functionnality ()
+* Add some "social" functionnalities between the cells (interaction, ressource exchange, ...)
+* Add a predator-prey interaction
+* Add the sexual reproduction functionnality ()
