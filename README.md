@@ -13,8 +13,6 @@ We propose an iterative development with continuous delivery.
 
 This project can be started with the simplest model and the naiviest implementation, to be later improved with additional functionnality, more complex models and computationnaly efficient implementations.
 
-## Programming language
-
 This project will be developped in object-oriented high-level programming language like Python3 (+ potentially the PyPy interpreter). Some computationaly intensive parts of the project could also be written in C. However the priority should first be given to the algorithmic optimization rather than the implementation one.
 
 ## Roadmap
