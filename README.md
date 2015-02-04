@@ -27,3 +27,6 @@ This is a proposed roadmap, with ideas more or less structured and/or detailled.
 * Add some "social" functionnalities between the cells (interaction, ressource exchange, ...)
 * Add a predator-prey interaction
 * Add the sexual reproduction functionnality ()
+
+* Once a working prototype is available and manually configurable, an automated upper layer could be added. Using machine learning approaches, this automated layer could run multiple instances of the simulation under varying starting conditions and help identify "interesting" scenarios (extended running life of the species, complex behavior ermergence, ...)
+
