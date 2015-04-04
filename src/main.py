@@ -7,7 +7,7 @@ import random
 import collections
 
 class Environment:
-    def __init__(self, height=40, width=60):
+    def __init__(self, height=35, width=60):
     # def __init__(self, height=10, width=10):
         self.height = height
         self.width = width
