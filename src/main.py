@@ -4,20 +4,23 @@ import os
 import sys
 import time
 import random
+import collections
 
 class Environment:
     def __init__(self, height=40, width=60):
+    # def __init__(self, height=10, width=10):
         self.height = height
         self.width = width
-        self.agents_dict = dict()
+        self.agents_dict = collections.OrderedDict()
         self.__populate()
     
     def run_next_step(self):
         new_agents_dict = dict()
-        for (i, j), element in self.agents_dict.items():
+        dict_len = len(self.agents_dict)
+        for i in range(dict_len):
+            (i, j), element = self.agents_dict.popitem(last=False)
             new_position = element.move(self.get_neighbors(i, j), self.height, self.width)
-            new_agents_dict[new_position] = self.agents_dict[(i, j)]
-        self.agents_dict = new_agents_dict
+            self.agents_dict[new_position] = element
     
     def display(self, file_handle=sys.stdout, separator=' '):
         for i in range(self.height):
@@ -27,7 +30,7 @@ class Environment:
                     character = self.agents_dict[(i, j)].display_character
                 file_handle.write("{0}{1}".format(character, separator))
             file_handle.write('\n')
-        # file_handle.write("num_EnvObject="+str(len(self.agents_dict))+"\n")
+        file_handle.write("num_EnvObject="+str(len(self.agents_dict))+"\n")
     
     def __populate(self):
         for i in range(self.height):
@@ -96,8 +99,8 @@ class Cell(EnvObject):
 
 
 if __name__ == '__main__':
-    # random.seed(1)
-    random.seed()
+    random.seed(1)
+    # random.seed()
     forest = Environment()
     while True:
     # for i in range(11):
