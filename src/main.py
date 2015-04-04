@@ -13,13 +13,14 @@ class Environment:
         self.width = width
         self.agents_dict = collections.OrderedDict()
         self.__populate()
+        # self.__manual_populate()
     
     def run_next_step(self):
         new_agents_dict = dict()
         dict_len = len(self.agents_dict)
         for i in range(dict_len):
             (i, j), element = self.agents_dict.popitem(last=False)
-            new_position = element.move(self.get_neighbors(i, j), self.height, self.width)
+            new_position = element.move(self.get_neighbors(i, j, boundaries=False), self.height, self.width)
             self.agents_dict[new_position] = element
     
     def display(self, file_handle=sys.stdout, separator=' '):
@@ -38,12 +39,19 @@ class Environment:
                 if random.random() < 0.01:
                     element = Cell(i, j)
                     self.agents_dict[(i, j)] = element
+
+    def __manual_populate(self):
+        element = Cell(5, 5)
+        self.agents_dict[(5, 5)] = element
     
-    def get_neighbors(self, i, j):
+    def get_neighbors(self, i, j, boundaries=True):
         delta = ((-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1))
         neighbors_dict = dict()
         for (offset_i, offset_j) in delta:
-            neighbor_position = (i+offset_i, j+offset_j)
+            if boundaries:
+                neighbor_position = (i+offset_i, j+offset_j)
+            else:
+                neighbor_position = ((i+offset_i+self.height)%self.height, (j+offset_j+self.width)%self.width)
             if neighbor_position in self.agents_dict:
                 neighbors_dict[neighbor_position] = self.agents_dict[neighbor_position]
         return neighbors_dict
@@ -63,10 +71,12 @@ class EnvObject:
         # for (i, j), element in neighbors_dict.items():
             # sys.stdout.write(str(i)+" "+str(j)+" ")
             # print(element.__dict__)
-        new_position = self.get_random_new_position(delta, height, width)
+        # new_position = self.get_random_new_position(delta, height, width, boundaries=True)
+        new_position = self.get_random_new_position(delta, height, width, boundaries=False)
         # print("new_position = ("+str(new_position[0])+", "+str(new_position[1])+")")
         while (new_position in neighbors_dict):
-            new_position = self.get_random_new_position(delta, height, width)
+            # new_position = self.get_random_new_position(delta, height, width, boundaries=True)
+            new_position = self.get_random_new_position(delta, height, width, boundaries=False)
             # print("new_position = ("+str(new_position[0])+", "+str(new_position[1])+")")
         # if (len(neighbors_dict)):
             # print("new_position = ("+str(new_position[0])+", "+str(new_position[1])+")")
@@ -74,12 +84,17 @@ class EnvObject:
         (self.i, self.j) = new_position
         return new_position
     
-    def get_random_new_position(self, delta, height, width):
+    def get_random_new_position(self, delta, height, width, boundaries=False):
         new_position = (-1, -1)
-        while (not self.is_position_in_environment_boundaries(new_position, height, width)):
+        if boundaries:
+            while (not self.is_position_in_environment_boundaries(new_position, height, width)):
+                (offset_i, offset_j) = random.choice(delta)
+                new_position = (self.i+offset_i, self.j+offset_j)
+        else:
             (offset_i, offset_j) = random.choice(delta)
-            new_position = (self.i+offset_i, self.j+offset_j)
-            # print("new_position = ("+str(new_position[0])+", "+str(new_position[1])+")")
+            # print("offset_i, offset_j = "+str(offset_i)+", "+str(offset_j))
+            new_position = ((self.i+offset_i+height)%height, (self.j+offset_j+width)%width)
+        # print("new_position = ("+str(new_position[0])+", "+str(new_position[1])+")")
         return new_position
     
     def is_position_in_environment_boundaries(self, position, height, width):
@@ -99,11 +114,11 @@ class Cell(EnvObject):
 
 
 if __name__ == '__main__':
-    random.seed(1)
-    # random.seed()
+    # random.seed(1)
+    random.seed()
     forest = Environment()
     while True:
-    # for i in range(11):
+    # for i in range(3):
         os.system('clear')
         forest.display()
         forest.run_next_step()
