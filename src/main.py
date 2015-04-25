@@ -9,13 +9,13 @@ from controller import Controller
 
 if __name__ == '__main__':
 
-	# Parameters
-	environment_height = 35
-	environment_width = 60
-	populate_probability = 0.01
+    # Parameters
+    environment_height = 35
+    environment_width = 60
+    populate_probability = 0.01
 
-	#
-	c = Controller(environment_height, environment_width, populate_probability)
+    #
+    c = Controller(environment_height, environment_width, populate_probability)
 
-	#
-	c.run()
+    #
+    c.run()
