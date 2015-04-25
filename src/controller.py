@@ -1,45 +1,33 @@
 
-from agent import * 
-from viewer import *
+from observer import *
+from model import MyModel
+from view import MyView
 
-class Controller:
+import random
+
+import sys
+
+class MyController(Observable):
 
     def __init__(self, env_height, env_width, populate_proba):
+        # Random seed initialization
+        # random.seed(1)
+        random.seed()
         #
-        self.env_height = env_height
-        self.env_width = env_width
-        #
-        self.env_matrix = list()
-        self.env_matrix_view = list()
-        self.init_env_matrix()
-        #
-        self.agent_list = list()
-        self.agent_list_view = list()
-        self.populate_env(populate_proba)
+        self.model = MyModel(env_height, env_width, populate_proba)
+        self.view = MyView(self, self.model)
 
-    def init_env_matrix(self):
-        
-        # Fill the environment matrix with tiles, and fill a similar matrix with the tiles view
-        self.env_matrix = [[Tile() for j in range(self.env_width)] for i in range(self.env_height)]
-        self.env_matrix_view = [[TileViewer(self.env_matrix[i][j]) for j in range(self.env_width)] 
-                                for i in range(self.env_height)]
+    def start(self):
+        print('{0} {1}'.format(self.model.env_height, self.model.env_width))
 
-        # To quickly get all neighbor tiles
-        offset_list = ((-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1))
-        # For each tile, add all neighbor tiles. As in a 2 dimensional toric environment
-        for i in range self.env_height:
-            for j in range self.env_width:
-                for offset in offset_list:
-                    neighbor_coordinate_i = (i+offset[0]+self.env_height) % self.env_height 
-                    neighbor_coordinate_j = (j+offset[1]+self.env_width) % self.env_width
-                    neighbor_tile = self.env_matrix[neighbor_coordinate_i][neighbor_coordinate_j]
-                    self.env_matrix.add_neighbor(neighbor_tile)
+        for i in range(self.model.env_height):
+            for j in range(self.model.env_width):
+                tile = self.model.env_matrix[i][j]
+                if tile.agent:
+                    sys.stdout.write('0 ')
+                else:
+                    sys.stdout.write('  ')
+            sys.stdout.write('\n')
 
-
-    def populate_env(self, populate_proba):
-
-
-
-
-    def run(self):
+        return 0
 

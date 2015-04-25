@@ -3,11 +3,14 @@
 import os
 import sys
 import time
-import random
 
-from controller import Controller
+# import pudb
+
+from controller import MyController
 
 if __name__ == '__main__':
+
+    # pu.db
 
     # Parameters
     environment_height = 35
@@ -15,7 +18,7 @@ if __name__ == '__main__':
     populate_probability = 0.01
 
     #
-    c = Controller(environment_height, environment_width, populate_probability)
+    c = MyController(environment_height, environment_width, populate_probability)
 
     #
-    c.run()
+    c.start()
