@@ -122,6 +122,9 @@ if __name__ == '__main__':
         os.system('clear')
         forest.display()
         forest.run_next_step()
+        tmp_time = time.perf_counter()
+        elapsed_time = time.perf_counter() - tmp_time
+        print("sim_time={0} sec".format(elapsed_time))
         time.sleep(0.1)
 
     
