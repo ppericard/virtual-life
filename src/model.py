@@ -36,7 +36,7 @@ class MyModel:
         for i in range(self.env_height):
             for j in range(self.env_width):
                 if random.random() < populate_proba:
-                    new_agent = Agent()
+                    new_agent = Cell()
                     self.agent_list.append(new_agent)
                     self.env_matrix[i][j].set_agent(new_agent)
 

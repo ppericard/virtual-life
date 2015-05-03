@@ -5,9 +5,7 @@ from view import MyView
 
 import random
 
-import sys
-
-class MyController(Observable):
+class MyController():
 
     def __init__(self, env_height, env_width, populate_proba):
         # Random seed initialization
@@ -15,19 +13,12 @@ class MyController(Observable):
         random.seed()
         #
         self.model = MyModel(env_height, env_width, populate_proba)
-        self.view = MyView(self, self.model)
+        self.view = MyView(self.model)
+
+    def update_view(self):
+        self.view.update()
 
     def start(self):
-        print('{0} {1}'.format(self.model.env_height, self.model.env_width))
+        self.update_view()
 
-        for i in range(self.model.env_height):
-            for j in range(self.model.env_width):
-                tile = self.model.env_matrix[i][j]
-                if tile.agent:
-                    sys.stdout.write('0 ')
-                else:
-                    sys.stdout.write('  ')
-            sys.stdout.write('\n')
-
-        return 0
 

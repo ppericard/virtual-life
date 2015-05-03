@@ -1,6 +1,8 @@
 
 class Tile:
 
+    display_character = ' '
+
     def __init__(self):
         self.neighbors_list = list()
         self.agent = None
