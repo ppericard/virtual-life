@@ -8,8 +8,10 @@ from environment_view import *
 
 class MyView(Observer):
 
-    def __init__(self, model):
+    def __init__(self, model, frame_per_second):
         self.model = model
+        self.frame_per_second = frame_per_second
+        self.frame_duration_in_sec = 1 / frame_per_second
 
     def update(self):
         self.display()
@@ -20,14 +22,11 @@ class MyView(Observer):
 
         for i in range(self.model.env_height):
             for j in range(self.model.env_width):
-                tile = self.model.env_matrix[i][j]
-                if tile.agent:
-                    sys.stdout.write('{0} '.format(tile.agent.display_character))
-                else:
-                    sys.stdout.write('{0} '.format(tile.display_character))
+                tile = self.model.get_tile_at_position(i,j)
+                sys.stdout.write('{0} '.format(tile.display()))
             sys.stdout.write('\n')
         
-        print('agents_nb={0}'.format(len()))
+        print('agents_nb={0}'.format(len(self.model.agent_list)))
 
 
 

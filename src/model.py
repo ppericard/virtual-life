@@ -36,9 +36,10 @@ class MyModel:
         for i in range(self.env_height):
             for j in range(self.env_width):
                 if random.random() < populate_proba:
-                    new_agent = Cell()
+                    tile = self.env_matrix[i][j]
+                    new_agent = Cell(tile)
                     self.agent_list.append(new_agent)
-                    self.env_matrix[i][j].set_agent(new_agent)
+                    tile.set_agent(new_agent)
 
     def get_tile_at_position(self, i, j):
         return self.env_matrix[i][j]

@@ -14,7 +14,7 @@ class Tile:
         self.neighbors_list.extend(list_neighbors)
 
     def get_neighbors(self):
-        return self.neighbors_list()
+        return self.neighbors_list
 
     def set_agent(self, agent):
         self.agent = agent
@@ -22,4 +22,14 @@ class Tile:
     def remove_agent(self):
         self.agent = None
 
+    def is_empty(self):
+        if self.agent:
+            return False
+        else:
+            return True
 
+    def display(self):
+        if self.agent:
+            return self.agent.display()
+        else:
+            return self.display_character
