@@ -4,12 +4,13 @@ import os
 import sys
 import time
 import random
+import cProfile
 
 from controller import MyController
 
-if __name__ == '__main__':
+def main():
 
-    # Random seed initialization
+     # Random seed initialization
     random.seed(1)
     # random.seed()
 
@@ -29,3 +30,10 @@ if __name__ == '__main__':
 
     #
     c.start()
+
+
+if __name__ == '__main__':
+
+    main()
+    # cProfile.run('main()')
+   
