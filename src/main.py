@@ -10,7 +10,7 @@ from controller import MyController
 
 def main():
 
-     # Random seed initialization
+    # Random seed initialization
     random.seed(1)
     # random.seed()
 

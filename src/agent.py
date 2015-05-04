@@ -4,10 +4,20 @@ import random
 class Agent:
 
     display_character = 'O'
+    avg_life_expectancy = 0
+    std_dev_life_expectancy = 1
 
     def __init__(self, tile):
         self.current_tile = tile
         self.previous_tile = None
+        self.turns_to_live = self.life_expectancy()
+
+    def life_expectancy(self):
+        turns_to_live = random.gauss(self.avg_life_expectancy, self.std_dev_life_expectancy)
+        if (turns_to_live > 0):
+            return turns_to_live
+        else:
+            return 0
 
     def set_new_tile(self, tile):
         self.previous_tile = self.current_tile
@@ -34,6 +44,8 @@ class Agent:
 class Cell(Agent):
 
     display_character = '0'
+    avg_life_expectancy = 600
+    std_dev_life_expectancy = 100
 
 
 
