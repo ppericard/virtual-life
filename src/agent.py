@@ -21,7 +21,7 @@ class Agent:
         tries_nb = 0
         max_tries = len(neighbor_tiles) * try_strength
         found_empty_tile = False
-        while(not found_empty_tile or (tries_nb <= max_tries)):
+        while(not found_empty_tile and (tries_nb <= max_tries)):
             next_tile = random.choice(neighbor_tiles)
             if next_tile.is_empty():
                 found_empty_tile = True
