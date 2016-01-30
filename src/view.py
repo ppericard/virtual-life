@@ -1,10 +1,6 @@
-
 import sys
 
 from observer import *
-from agent_view import *
-from inanimate_view import *
-from environment_view import *
 
 class MyView(Observer):
 
