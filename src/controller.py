@@ -9,7 +9,7 @@ import time
 
 class MyController():
 
-    def __init__(self, env_height, env_width, 
+    def __init__(self, env_height, env_width,
                  populate_proba, try_strength,
                  frame_per_second):
         self.model = MyModel(env_height, env_width, populate_proba)
@@ -26,7 +26,7 @@ class MyController():
     def start(self):
 
         frame_time_start = time.perf_counter()
-        
+
         os.system('clear')
         self.update_view()
 
@@ -45,6 +45,6 @@ class MyController():
             print("frame_duration_in_sec={0}".format(self.view.frame_duration_in_sec))
             print("frame_time={0} sec".format(frame_time))
 
-            time_left_to_next_frame = self.view.frame_duration_in_sec - sim_running_time
+            time_left_to_next_frame = self.view.frame_duration_in_sec - (time.perf_counter() - sim_time_start)
             if (time_left_to_next_frame > 0):
                 time.sleep(time_left_to_next_frame)

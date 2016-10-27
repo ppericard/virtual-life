@@ -21,7 +21,7 @@ class MyView(Observer):
                 tile = self.model.get_tile_at_position(i,j)
                 sys.stdout.write('{0} '.format(tile.display()))
             sys.stdout.write('\n')
-        
+
         print('agents_nb={0}'.format(len(self.model.agent_list)))
 
 

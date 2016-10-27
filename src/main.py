@@ -24,7 +24,7 @@ def main():
     frame_per_second = 10
 
     #
-    c = MyController(environment_height, environment_width, 
+    c = MyController(environment_height, environment_width,
                      populate_probability, try_strength,
                      frame_per_second)
 
@@ -36,4 +36,4 @@ if __name__ == '__main__':
 
     main()
     # cProfile.run('main()')
-   
+

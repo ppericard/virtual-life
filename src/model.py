@@ -6,7 +6,7 @@ from environment import *
 import random
 
 class MyModel:
-    
+
     def __init__(self, env_height, env_width, populate_proba):
         #
         self.env_height = env_height
