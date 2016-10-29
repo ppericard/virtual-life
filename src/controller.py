@@ -15,11 +15,14 @@ class MyController():
         self.view = MyView(self.model, frame_per_second)
 
     def update_view(self):
+        os.system('clear')
         self.view.update()
 
     def run_next_step(self):
-        for agent in self.model.agent_list:
-            agent.next_step()
+        for line in self.model.env_matrix:
+            for tile in line:
+                if not tile.is_empty():
+                    tile.agent.next_step()
 
     def start(self):
 
@@ -33,7 +36,6 @@ class MyController():
             self.run_next_step()
             sim_running_time = time.perf_counter() - sim_time_start
 
-            os.system('clear')
             self.update_view()
             frame_time = time.perf_counter() - frame_time_start
             frame_time_start = time.perf_counter()

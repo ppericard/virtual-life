@@ -16,6 +16,9 @@ class Tile:
     def get_neighbors(self):
         return self.neighbors_list
 
+    def get_empty_neighbors(self):
+        return [tile for tile in self.neighbors_list if tile.is_empty()]
+
     def set_agent(self, agent):
         self.agent = agent
 

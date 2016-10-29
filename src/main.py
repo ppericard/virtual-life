@@ -19,7 +19,7 @@ def main():
     environment_width = 60
     populate_probability = 0.01
     # View parameters
-    frame_per_second = 10
+    frame_per_second = 20
 
     #
     c = MyController(environment_height, environment_width,

@@ -15,7 +15,6 @@ class MyModel:
         self.env_matrix = list()
         self.__init_env_matrix()
         #
-        self.agent_list = list()
         self.__populate_env(populate_proba)
 
     def __init_env_matrix(self):
@@ -38,7 +37,6 @@ class MyModel:
                 if random.random() < populate_proba:
                     tile = self.env_matrix[i][j]
                     new_agent = Cell(tile)
-                    self.agent_list.append(new_agent)
                     tile.set_agent(new_agent)
 
     def get_tile_at_position(self, i, j):
