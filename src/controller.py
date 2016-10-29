@@ -10,18 +10,16 @@ import time
 class MyController():
 
     def __init__(self, env_height, env_width,
-                 populate_proba, try_strength,
-                 frame_per_second):
+                 populate_proba, frame_per_second):
         self.model = MyModel(env_height, env_width, populate_proba)
         self.view = MyView(self.model, frame_per_second)
-        self.try_strength = try_strength
 
     def update_view(self):
         self.view.update()
 
     def run_next_step(self):
         for agent in self.model.agent_list:
-            agent.next_step(self.try_strength)
+            agent.next_step()
 
     def start(self):
 

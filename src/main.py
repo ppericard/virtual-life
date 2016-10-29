@@ -18,15 +18,12 @@ def main():
     environment_height = 35
     environment_width = 60
     populate_probability = 0.01
-    # Agents parameters
-    try_strength = 3
     # View parameters
     frame_per_second = 10
 
     #
     c = MyController(environment_height, environment_width,
-                     populate_probability, try_strength,
-                     frame_per_second)
+                     populate_probability, frame_per_second)
 
     #
     c.start()
