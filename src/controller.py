@@ -4,6 +4,7 @@ from model import MyModel
 from view import MyView
 
 import os
+import platform
 import random
 import time
 
@@ -13,27 +14,18 @@ class MyController():
                  populate_proba, frame_per_second):
         self.model = MyModel(env_height, env_width, populate_proba)
         self.view = MyView(self.model, frame_per_second)
+        self.clear_command = 'cls' if platform.system() == "Windows" else 'clear'
 
     def update_view(self):
-        os.system('clear')
+        os.system(self.clear_command)
         self.view.update()
 
-    def run_next_step(self):
-        for line in self.model.env_matrix:
-            for tile in line:
-                if not tile.is_empty():
-                    tile.agent.next_step()
-
     def start(self):
-
         frame_time_start = time.perf_counter()
-
-        os.system('clear')
         self.update_view()
-
         while (True):
             sim_time_start = time.perf_counter()
-            self.run_next_step()
+            self.model.run_simulation_step()
             sim_running_time = time.perf_counter() - sim_time_start
 
             self.update_view()

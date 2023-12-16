@@ -1,10 +1,12 @@
 
 class Tile:
-
+    """
+    Represents a single tile in the environment.
+    """
     display_character = ' '
 
     def __init__(self):
-        self.neighbors_list = list()
+        self.neighbors_list = []
         self.agent = None
 
     def add_neighbor(self, neighbor_tile):
