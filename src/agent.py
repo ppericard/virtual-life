@@ -85,22 +85,57 @@ class Agent(ABC):
             new_agent = self.__class__(target_tile, new_character)
             target_tile.set_agent(new_agent)
 
+    def calculate_adjusted_split_probability(self):
+        """
+        Calculates the adjusted probability of splitting based on the neighbors.
+        This method provides a generic implementation, which can be overridden by subclasses.
+        """
+        neighbors_agents = self._current_tile.get_neighbors_agents()
+        # Example generic logic (can be adjusted or replaced in subclasses)
+        if len(neighbors_agents) > 4:
+            return max(self.action_probabilities['split'] / 2, 0.01)
+        else:
+            return self.action_probabilities['split']
+
     def draw_action(self) -> str:
         """
-        Randomly decides the next action of the agent.
+        Randomly decides the next action of the agent, with adjusted probabilities.
         """
+        adjusted_split_proba = self.calculate_adjusted_split_probability()
+
+        # Decide the action
         random_proba = random.random()
         cumulative_proba = 0
+
         for action, proba in self.action_probabilities.items():
-            cumulative_proba += proba
+            if action == 'split':
+                cumulative_proba += adjusted_split_proba
+            else:
+                # Adjust the probability of other actions to maintain the total probability of 1
+                cumulative_proba += proba / (1 - self.action_probabilities['split']) * (1 - adjusted_split_proba)
+
             if random_proba <= cumulative_proba:
                 return action
+
         return 'rest'  # Fallback in case of rounding errors
+
+    def adjust_life_expectancy_based_on_neighbors(self):
+        """
+        Adjusts the agent's life expectancy based on neighboring agents.
+        This method provides a generic implementation, which can be overridden by subclasses.
+        """
+        neighbors_agents = self._current_tile.get_neighbors_agents()
+        # Implement generic logic here. For example:
+        # Reduce life expectancy if too crowded
+        if len(neighbors_agents) > 4:
+            self._turns_to_live -= 1
 
     def next_step(self):
         """
         Executes the next step in the agent's lifecycle, based on the drawn action.
         """
+        self.adjust_life_expectancy_based_on_neighbors()  # Adjust life expectancy
+
         if self.is_dead():
             self._current_tile.remove_agent()
             return
@@ -120,7 +155,6 @@ class Agent(ABC):
         Defines interaction with another agent.
         """
         pass
-
 
 
 class Cell(Agent):
@@ -144,3 +178,44 @@ class Cell(Agent):
     def interact(self, other_agent):
         # Define how a cell interacts with another agent
         pass
+
+    def adjust_life_expectancy_based_on_neighbors(self):
+        """
+        Cell-specific logic for adjusting life expectancy based on neighbors.
+        """
+        neighbors_agents = self._current_tile.get_neighbors_agents()
+
+        # Reduce life expectancy if too crowded
+        if len(neighbors_agents) > 4:
+            self._turns_to_live -= 1
+        if len(neighbors_agents) > 6:
+            self._turns_to_live -= 1
+
+        same_character_neighbors_count = len([a for a in neighbors_agents if a.display_character == self.display_character])
+
+        #Increase life expectancy for more same-character neighbors
+        if same_character_neighbors_count >= 2:
+            self._turns_to_live += 1
+    
+    def calculate_adjusted_split_probability(self):
+        """
+        Cell-specific logic for adjusting split probability based on neighbors.
+        """
+        neighbors_agents = self._current_tile.get_neighbors_agents()
+        neighbors_agents_count = len(neighbors_agents)
+        same_character_neighbors_count = len([a for a in neighbors_agents if a.display_character == self.display_character])
+
+        adjusted_split_proba = self.action_probabilities['split']
+
+        # Increase split probability for more same-character neighbors
+        if same_character_neighbors_count >= 2:
+            adjusted_split_proba *= 1 + (same_character_neighbors_count/10)
+
+        # Reduce split probability if too crowded and increase if not crowded
+        adjusted_split_proba *= 1 + (3 - neighbors_agents_count)/10
+
+        # Limit split probability to min and max values
+        max_split_proba = self.action_probabilities['split'] * 2
+        min_split_proba = self.action_probabilities['split'] / 2
+
+        return min(max(adjusted_split_proba, min_split_proba), max_split_proba)
