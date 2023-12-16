@@ -191,31 +191,27 @@ class Cell(Agent):
         """
         Cell-specific logic for adjusting life expectancy based on neighbors.
         """
-        neighbors_agents = self._current_tile.get_neighbors_agents()
+        neighbors_agents = self._current_tile.get_neighbors_agents(max_distance=3)
 
         # Reduce life expectancy if too crowded
-        if len(neighbors_agents) > 4:
-            self._turns_to_live -= 1
-        if len(neighbors_agents) > 6:
-            self._turns_to_live -= 1
-
-        same_character_neighbors_count = len([a for a in neighbors_agents if a.display_character == self.display_character])
+        self._turns_to_live -= max(0, len(neighbors_agents) - 3)
 
         #Increase life expectancy for more same-character neighbors
+        same_character_neighbors_count = len([a for a in neighbors_agents if a.display_character == self.display_character])
         if same_character_neighbors_count >= 2:
-            self._turns_to_live += 1
+            self._turns_to_live += 0.1
     
     def calculate_adjusted_split_probability(self):
         """
         Cell-specific logic for adjusting split probability based on neighbors.
         """
-        neighbors_agents = self._current_tile.get_neighbors_agents()
+        neighbors_agents = self._current_tile.get_neighbors_agents(max_distance=3)
         neighbors_count = len(neighbors_agents)
-        same_char_neighbors_count = sum(a.display_character == self.display_character for a in neighbors_agents)
 
         adjusted_split_proba = self.action_probabilities['split']
 
         # Adjust for same-character neighbors
+        same_char_neighbors_count = sum(a.display_character == self.display_character for a in neighbors_agents)
         adjusted_split_proba *= 1 + (same_char_neighbors_count / 10)
 
         # Adjust for crowding

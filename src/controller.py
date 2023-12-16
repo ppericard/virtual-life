@@ -2,10 +2,8 @@
 from observer import *
 from model import MyModel
 from view import MyView
-
 import os
 import platform
-import random
 import time
 
 class MyController():
@@ -14,29 +12,55 @@ class MyController():
                  populate_proba, frame_per_second):
         self.model = MyModel(env_height, env_width, populate_proba)
         self.view = MyView(self.model, frame_per_second)
-        self.clear_command = 'cls' if platform.system() == "Windows" else 'clear'
+
+    def clear_screen(self):
+        # ANSI escape sequence to clear the screen
+        print("\033[H\033[J", end="")
 
     def update_view(self):
-        os.system(self.clear_command)
+        self.clear_screen()
         self.view.update()
 
-    def start(self):
-        frame_time_start = time.perf_counter()
+    def run(self):
         self.update_view()
-        while (True):
-            sim_time_start = time.perf_counter()
-            self.model.run_simulation_step()
-            sim_running_time = time.perf_counter() - sim_time_start
+        last_frame_time = time.perf_counter()
+        fps_smoothing = 0.9  # Smoothing factor for FPS calculation
+        smoothed_fps = self.view.frame_per_second
+        target_frame_duration = 1.0 / self.view.frame_per_second
+        total_sleep_deficit = 0.0  # Track accumulated deviation from target frame time
 
-            self.update_view()
-            frame_time = time.perf_counter() - frame_time_start
-            frame_time_start = time.perf_counter()
+        try:
+            while True:
+                sim_time_start = time.perf_counter()
+                self.model.run_simulation_step()
+                sim_time_end = time.perf_counter()
+                simulation_duration = sim_time_end - sim_time_start
 
-            print("sim_time={0} sec".format(sim_running_time))
-            print("FPS={0}".format(self.view.frame_per_second))
-            print("frame_duration_in_sec={0}".format(self.view.frame_duration_in_sec))
-            print("frame_time={0} sec".format(frame_time))
+                self.update_view()
 
-            time_left_to_next_frame = self.view.frame_duration_in_sec - (time.perf_counter() - sim_time_start)
-            if (time_left_to_next_frame > 0):
-                time.sleep(time_left_to_next_frame)
+                current_frame_time = time.perf_counter()
+                total_frame_duration = current_frame_time - last_frame_time
+                last_frame_time = current_frame_time
+
+                # Calculate FPS and apply smoothing
+                current_fps = 1.0 / total_frame_duration if total_frame_duration > 0 else 0
+                smoothed_fps = (smoothed_fps * fps_smoothing) + (current_fps * (1 - fps_smoothing))
+
+                print(f"Simulation duration={simulation_duration:.6f} sec")
+                print(f"Actual FPS={smoothed_fps:.2f}, Target FPS={self.view.frame_per_second}")
+                print(f"total_frame_duration_in_sec={total_frame_duration:.6f} sec")
+                
+                # Calculate sleep time, factoring in any previous deficit
+                sleep_duration = max(target_frame_duration - simulation_duration + total_sleep_deficit, 0)
+                if sleep_duration > 0:
+                    # Sleep for most of the duration, then busy-wait for more accuracy
+                    time.sleep(sleep_duration - 0.002)
+                    while time.perf_counter() - sim_time_start < target_frame_duration:
+                        pass
+
+                # Update sleep deficit
+                total_sleep_deficit += target_frame_duration - (time.perf_counter() - sim_time_start)
+                total_sleep_deficit = max(min(total_sleep_deficit, 0.1), -0.1)  # Keep within reasonable bounds
+
+        except KeyboardInterrupt:
+            print("\nSimulation interrupted by user.")
