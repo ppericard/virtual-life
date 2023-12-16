@@ -23,7 +23,7 @@ def main():
     controller.run()
 
 if __name__ == '__main__':
-    profiling_enabled = False
+    profiling_enabled = True
     if '--profile' in sys.argv:
         profiling_enabled = True
 

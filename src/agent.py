@@ -170,14 +170,14 @@ class Cell(Agent):
     Cell class, derived from Agent, with specific properties and behaviors.
     """
     possible_characters = ['*', '#', '@', '+', '%', '&', '?', '!', '$', '§', '~', '=', '-', '_', ':', ';', '^', '>', '<', '|']
-    avg_life_expectancy = 300
-    std_dev_life_expectancy = 200
+    avg_life_expectancy = 200
+    std_dev_life_expectancy = 100
     default_mutation_probability = 0.05  # Default mutation probability for Cell
     initial_try_strength = 3
 
     action_probabilities = {
         'move': 1/5,
-        'split': 1/300
+        'split': 1/200
     }
 
     def __init__(self, tile, display_character=None, mutation_probability=None, death_callback=None, born_callback=None):
@@ -212,10 +212,10 @@ class Cell(Agent):
 
         # Adjust for same-character neighbors
         same_char_neighbors_count = sum(a.display_character == self.display_character for a in neighbors_agents)
-        adjusted_split_proba *= 1 + (same_char_neighbors_count / 10)
+        adjusted_split_proba *= 1 + (same_char_neighbors_count / 20)
 
         # Adjust for crowding
-        adjusted_split_proba *= 1 + (3 - neighbors_count) / 10
+        adjusted_split_proba *= 1 + (3 - neighbors_count) / 20
 
         # Ensure probability is within bounds [0, 1]
         adjusted_split_proba = min(max(adjusted_split_proba, 0), 1)
