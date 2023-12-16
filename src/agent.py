@@ -176,7 +176,7 @@ class Cell(Agent):
     initial_try_strength = 3
 
     action_probabilities = {
-        'move': 1/5,
+        'move': 1/10,
         'split': 1/200
     }
 
