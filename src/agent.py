@@ -18,7 +18,7 @@ class Agent(ABC):
         'split': 0.4
     }
 
-    def __init__(self, tile, display_character=None, mutation_probability=None):
+    def __init__(self, tile, display_character=None, mutation_probability=None, death_callback=None, born_callback=None):
         self._current_tile = tile
         self._previous_tile = None
         self._turns_to_live = self._life_expectancy()
@@ -26,6 +26,8 @@ class Agent(ABC):
         self.display_character = display_character if display_character else random.choice(self.possible_characters)
         # Set mutation probability, or use class's default
         self.mutation_probability = mutation_probability if mutation_probability is not None else self.default_mutation_probability
+        self.death_callback = death_callback
+        self.born_callback = born_callback
 
     @property
     def current_tile(self):
@@ -82,8 +84,12 @@ class Agent(ABC):
                 # No mutation: inherit parent's character
                 new_character = self.display_character
 
-            new_agent = self.__class__(target_tile, new_character)
+            new_agent = self.__class__(target_tile, new_character, 
+                                       death_callback=self.death_callback, 
+                                       born_callback=self.born_callback)
             target_tile.set_agent(new_agent)
+            if self.born_callback:
+                self.born_callback(new_agent)
 
     def calculate_adjusted_split_probability(self):
         """
@@ -138,6 +144,8 @@ class Agent(ABC):
 
         if self.is_dead():
             self._current_tile.remove_agent()
+            if self.death_callback:
+                self.death_callback(self)
             return
 
         action_to_do = self.draw_action()
@@ -172,8 +180,8 @@ class Cell(Agent):
         'split': 1/300
     }
 
-    def __init__(self, tile, display_character=None, mutation_probability=None):
-        super().__init__(tile, display_character, mutation_probability)
+    def __init__(self, tile, display_character=None, mutation_probability=None, death_callback=None, born_callback=None):
+        super().__init__(tile, display_character, mutation_probability, death_callback, born_callback)
 
     def interact(self, other_agent):
         # Define how a cell interacts with another agent
@@ -202,17 +210,19 @@ class Cell(Agent):
         Cell-specific logic for adjusting split probability based on neighbors.
         """
         neighbors_agents = self._current_tile.get_neighbors_agents()
-        neighbors_agents_count = len(neighbors_agents)
-        same_character_neighbors_count = len([a for a in neighbors_agents if a.display_character == self.display_character])
+        neighbors_count = len(neighbors_agents)
+        same_char_neighbors_count = sum(a.display_character == self.display_character for a in neighbors_agents)
 
         adjusted_split_proba = self.action_probabilities['split']
 
-        # Increase split probability for more same-character neighbors
-        if same_character_neighbors_count >= 2:
-            adjusted_split_proba *= 1 + (same_character_neighbors_count/10)
+        # Adjust for same-character neighbors
+        adjusted_split_proba *= 1 + (same_char_neighbors_count / 10)
 
-        # Reduce split probability if too crowded and increase if not crowded
-        adjusted_split_proba *= 1 + (3 - neighbors_agents_count)/10
+        # Adjust for crowding
+        adjusted_split_proba *= 1 + (3 - neighbors_count) / 10
+
+        # Ensure probability is within bounds [0, 1]
+        adjusted_split_proba = min(max(adjusted_split_proba, 0), 1)
 
         # Limit split probability to min and max values
         max_split_proba = self.action_probabilities['split'] * 2

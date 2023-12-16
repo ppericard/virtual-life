@@ -16,25 +16,50 @@ class MyModel:
         """
         self.env_height = env_height
         self.env_width = env_width
-        self.env_matrix = [[Tile() for _ in range(env_width)] for _ in range(env_height)]
-        self._init_env_matrix()
+        self.env_matrix = [[Tile(i, j) for i in range(env_width)] for j in range(env_height)]
+        self._assign_neighbors_to_tiles()
         #
+        self.active_agents = []  # List to store active agents
         self._populate_env(populate_proba)
 
-    def _init_env_matrix(self):
+
+    def _get_neighbors(self, i, j, distance):
         """
-        Initializes the environment matrix with tiles and assigns neighbors to each tile.
+        Retrieves unique neighbors exactly at the specified distance.
+        Returns an empty list if the distance exceeds the maximum possible value.
         """
-        # To quickly get all neighbor tiles
-        offset_list = ((-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1))
-        # For each tile, add all neighbor tiles. As in a 2 dimensional toric environment
+        # Calculate the maximum possible distance
+        max_possible_distance = min(self.env_height // 2, self.env_width // 2)
+
+        # Return nothing if the requested distance exceeds the maximum possible distance
+        if distance > max_possible_distance:
+            return []
+
+        neighbors_set = set()
+        for di in range(-distance, distance + 1):
+            for dj in range(-distance, distance + 1):
+                # Skip the center tile and tiles not exactly at the specified distance
+                if (di == 0 and dj == 0) or (abs(di) != distance and abs(dj) != distance):
+                    continue
+                # Calculate toric coordinates
+                neighbor_i = (i + di + self.env_height) % self.env_height
+                neighbor_j = (j + dj + self.env_width) % self.env_width
+                # Add the neighbor tile to the set
+                neighbors_set.add(self.env_matrix[neighbor_i][neighbor_j])
+        return list(neighbors_set)
+
+    def _assign_neighbors_to_tiles(self, max_distance=3):
         for i in range(self.env_height):
             for j in range(self.env_width):
-                for offset in offset_list:
-                    neighbor_i = (i+offset[0]+self.env_height) % self.env_height
-                    neighbor_j = (j+offset[1]+self.env_width) % self.env_width
-                    neighbor_tile = self.env_matrix[neighbor_i][neighbor_j]
-                    self.env_matrix[i][j].add_neighbor(neighbor_tile)
+                neighbors_dict = {d: self._get_neighbors(i, j, d) for d in range(1, max_distance + 1)}
+                self.env_matrix[i][j].set_neighbors(neighbors_dict)
+
+    def agent_died(self, agent):
+        if agent in self.active_agents:
+            self.active_agents.remove(agent)
+
+    def agent_born(self, new_agent):
+        self.active_agents.append(new_agent)
 
     def _populate_env(self, populate_proba):
         """
@@ -44,8 +69,9 @@ class MyModel:
             for j in range(self.env_width):
                 if random.random() < populate_proba:
                     tile = self.env_matrix[i][j]
-                    new_agent = Cell(tile)
+                    new_agent = Cell(tile, death_callback=self.agent_died, born_callback=self.agent_born)
                     tile.set_agent(new_agent)
+                    self.active_agents.append(new_agent)  # Add agent to active list
 
     def get_tile_at_position(self, i, j):
         """
@@ -55,12 +81,10 @@ class MyModel:
             return self.env_matrix[i][j]
         else:
             raise ValueError("Position out of environment bounds")
-        
+
     def run_simulation_step(self):
         """
         Executes the next step for each agent in the simulation.
         """
-        for row in self.env_matrix:
-            for tile in row:
-                if tile.agent:
-                    tile.agent.next_step()
+        for agent in self.active_agents:
+            agent.next_step()

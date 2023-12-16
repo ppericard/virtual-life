@@ -5,24 +5,36 @@ class Tile:
     """
     display_character = ' '
 
-    def __init__(self):
-        self.neighbors_list = []
+    def __init__(self, i, j):
+        self.i = i
+        self.j = j
+        self.neighbors_by_distance = {}  # Dict to store neighbors by distance
         self.agent = None
 
-    def add_neighbor(self, neighbor_tile):
-        self.neighbors_list.append(neighbor_tile)
+    def set_neighbors(self, neighbors_dict):
+        self.neighbors_by_distance = neighbors_dict
 
-    def add_list_neighbors(self, list_neighbors):
-        self.neighbors_list.extend(list_neighbors)
+    def get_neighbors_at_distance(self, distance):
+        """
+        Returns a list of tiles exactly at the specified distance.
+        """
+        return self.neighbors_by_distance.get(distance, [])
 
-    def get_neighbors(self):
-        return self.neighbors_list
+    def get_neighbors(self, max_distance=1):
+        """
+        Returns a list of all neighboring tiles up to the specified maximum distance.
+        """
+        all_neighbors = set()
+        for distance in range(1, max_distance + 1):
+            neighbors_at_distance = self.neighbors_by_distance.get(distance, [])
+            all_neighbors.update(neighbors_at_distance)
+        return list(all_neighbors)
     
-    def get_neighbors_agents(self):
-        return [tile.agent for tile in self.neighbors_list if tile.agent]
+    def get_neighbors_agents(self, max_distance=1):
+        return [tile.agent for tile in self.get_neighbors(max_distance) if tile.agent]
 
-    def get_empty_neighbors(self):
-        return [tile for tile in self.neighbors_list if tile.is_empty()]
+    def get_empty_neighbors(self, max_distance=1):
+        return [tile for tile in self.get_neighbors(max_distance) if tile.is_empty()]
 
     def set_agent(self, agent):
         self.agent = agent
