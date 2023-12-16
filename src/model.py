@@ -17,11 +17,11 @@ class MyModel:
         self.env_height = env_height
         self.env_width = env_width
         self.env_matrix = [[Tile() for _ in range(env_width)] for _ in range(env_height)]
-        self.__init_env_matrix()
+        self._init_env_matrix()
         #
-        self.__populate_env(populate_proba)
+        self._populate_env(populate_proba)
 
-    def __init_env_matrix(self):
+    def _init_env_matrix(self):
         """
         Initializes the environment matrix with tiles and assigns neighbors to each tile.
         """
@@ -36,7 +36,7 @@ class MyModel:
                     neighbor_tile = self.env_matrix[neighbor_i][neighbor_j]
                     self.env_matrix[i][j].add_neighbor(neighbor_tile)
 
-    def __populate_env(self, populate_proba):
+    def _populate_env(self, populate_proba):
         """
         Populates the environment with agents based on the given probability.
         """
@@ -62,5 +62,5 @@ class MyModel:
         """
         for row in self.env_matrix:
             for tile in row:
-                if not tile.is_empty():
+                if tile.agent:
                     tile.agent.next_step()
