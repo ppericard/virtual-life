@@ -11,8 +11,8 @@ def main():
     random.seed()
 
     # Environment parameters
-    environment_height = 48
-    environment_width = 96
+    environment_height = 24
+    environment_width = 72
     populate_probability = 0.01
 
     # View parameters
