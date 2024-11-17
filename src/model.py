@@ -1,4 +1,3 @@
-
 from agent import *
 from inanimate import *
 from environment import *
@@ -86,5 +85,7 @@ class MyModel:
         """
         Executes the next step for each agent in the simulation.
         """
-        for agent in self.active_agents:
+        # Create a copy to avoid modification issues during iteration
+        agents_to_process = self.active_agents.copy()
+        for agent in agents_to_process:
             agent.next_step()
