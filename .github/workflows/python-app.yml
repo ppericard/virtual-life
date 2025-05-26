@@ -1,0 +1,57 @@
+name: Python Application CI
+
+on:
+  push:
+    branches: [ main ] # Assuming 'main' is the primary branch
+  pull_request:
+    branches: [ main ] # Assuming 'main' is the primary branch
+
+jobs:
+  test: # Changed job name to 'test' for clarity
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4 # Using a newer version of checkout
+
+    - name: Set up Python
+      uses: actions/setup-python@v4 # Using a newer version of setup-python
+      with:
+        python-version: '3.10' 
+
+    # - name: Install dependencies # Placeholder for if requirements.txt is added
+    #   run: |
+    #     python -m pip install --upgrade pip
+    #     pip install -r requirements.txt
+
+    - name: Test with unittest
+      run: python -m unittest discover -s tests -p "test_*.py"
+      # Using '-s tests' to specify the start directory for discovery
+      # and '-p "test_*.py"' as the pattern for test files.
+      # This is equivalent to 'python -m unittest discover tests' if all files match.
+      # Adding working-directory: /app if checkout path is /app and tests are relative
+      # However, default checkout path and runner execution path should align.
+      # The tests are in /app/tests, so this should work from the root.
+      # If tests were run from /app/src, sys.path adjustments would be different.
+      # The current test setup (adjusting sys.path in each test file) is designed
+      # to work when tests are run from the project root.
+      # The command `python -m unittest discover tests` should work correctly.
+      # For added clarity, I will stick to the more explicit command.
+      # `python -m unittest discover -s tests -p "test_*.py"`
+      # The default working directory for `run` steps is the root of the repository.
+      # So, `tests` should be correctly found at the root level.
+      working-directory: ./ # Explicitly set working directory to repository root
+                            # Though this is often the default.
+                            # Let's try without it first, as it's usually not needed.
+                            # If issues arise, it can be added.
+                            # Removing working-directory as it's default.
+
+    # The command for running tests will be:
+    # python -m unittest discover tests -v
+    # Adding -v for verbose output, as used in previous steps.
+    # The prompt example uses: python -m unittest discover -s tests -p "test_*.py"
+    # I'll use this one for consistency with the prompt example.
+    # The `-v` flag is for verbosity of the test runner output, not for discovery.
+    # The prompt's example is fine.
+```

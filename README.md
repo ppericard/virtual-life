@@ -8,6 +8,66 @@ This simulator is rather oriented toward the computation of generations/turns gi
 
 It would allow to reproduce something as simple as Conway's Game of Life, to observe the emergence of ecological behaviors (predator–prey, mutualism, ...), or even to identify never observed non-natural patterns and behaviors.
 
+## Getting Started
+
+To run the simulation, navigate to the project's root directory and execute the following command:
+
+```bash
+python3 src/main.py
+```
+
+This will start the simulation with the default parameters defined in `config.py`.
+
+### Performance Profiling
+
+If you want to analyze the performance of the simulation, you can use the `--profile` flag:
+
+```bash
+python3 src/main.py --profile
+```
+This will run the simulation with `cProfile` and print performance statistics to the console after the simulation finishes.
+
+## Configuration
+
+The simulation's behavior is primarily controlled by parameters defined in the `config.py` file. You can modify these parameters to experiment with different scenarios.
+
+The main configuration settings are stored in the `SIMULATION_CONFIG` dictionary and include:
+
+*   **`environment`**:
+    *   `height`: The height of the simulation grid.
+    *   `width`: The width of the simulation grid.
+    *   `populate_probability`: The initial probability (0.0 to 1.0) that a tile will be populated by a cell at the start of the simulation.
+*   **`display`**:
+    *   `frame_per_second`: The target frame rate for the simulation display in the terminal.
+    *   `enable_colors`: (Currently implicitly True, but a placeholder for future GUI/display options) Whether to use colors in the display.
+*   **`cell`**:
+    *   `avg_life_expectancy`: The average lifespan of a cell in simulation steps (turns).
+    *   `std_dev_life_expectancy`: The standard deviation of a cell's lifespan.
+    *   `mutation_probability`: The probability (0.0 to 1.0) that a cell's offspring will mutate its display character upon splitting.
+    *   `action_probabilities`: A dictionary defining the base probabilities for different cell actions:
+        *   `move`: Probability of a cell attempting to move to an adjacent empty tile.
+        *   `split`: Probability of a cell attempting to split and create an offspring in an adjacent empty tile.
+
+Modifying these values in `config.py` will directly impact how the simulation unfolds, allowing for a wide range of observable behaviors and complexities.
+
+## Project Structure
+
+The project is organized as follows:
+
+*   `src/`: Contains all the source code for the simulation.
+    *   `main.py`: The main entry point for the application. It initializes and starts the simulation controller.
+    *   `config.py`: Defines the global configuration parameters for the simulation.
+    *   `controller.py`: Manages the main simulation loop, connecting the model and the view, and handling timing.
+    *   `model.py`: Contains the core simulation logic, including the environment grid, agent management, and rules for how agents interact and evolve.
+    *   `agent.py`: Defines the `Agent` abstract base class and the concrete `Cell` class, which dictates agent behavior (movement, splitting, aging, etc.).
+    *   `environment.py`: Defines the `Tile` class, representing individual units of the simulation grid.
+    *   `view.py`: Responsible for rendering the simulation state to the terminal, including colored output for different agents.
+    *   `observer.py`: Implements the Observer design pattern, though it's currently minimally used by `MyView` (the controller directly calls view updates).
+*   `README.md`: This file, providing an overview of the project.
+*   `LICENSE`: Contains the license information for the project.
+*   `.gitignore`: Specifies intentionally untracked files that Git should ignore.
+*   `tests/`: (Placeholder) Intended for future unit and integration tests.
+
 ## Development
 
 We propose an iterative development with continuous delivery.
