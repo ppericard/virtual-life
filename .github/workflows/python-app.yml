@@ -54,4 +54,3 @@ jobs:
     # I'll use this one for consistency with the prompt example.
     # The `-v` flag is for verbosity of the test runner output, not for discovery.
     # The prompt's example is fine.
-```
