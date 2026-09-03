@@ -20,6 +20,13 @@ jobs:
         with:
           name: cargo-test-log
           path: cargo-test.log
-      - run: cargo check --features viewer --bin virtual-life-viewer
+      - name: Check viewer
+        run: cargo check --features viewer --bin virtual-life-viewer > cargo-viewer.log 2>&1
+      - name: Upload viewer log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-viewer-log
+          path: cargo-viewer.log
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo fmt --check
