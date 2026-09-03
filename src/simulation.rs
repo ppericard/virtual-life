@@ -1,4 +1,4 @@
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::{rngs::StdRng, RngExt, SeedableRng};
 
 use crate::{Agent, Position, Snapshot, World};
 
@@ -115,7 +115,7 @@ impl Simulation {
     }
 }
 
-fn fisher_yates_shuffle<T>(values: &mut [T], rng: &mut impl Rng) {
+fn fisher_yates_shuffle<T>(values: &mut [T], rng: &mut impl rand::Rng) {
     for i in (1..values.len()).rev() {
         let j = rng.random_range(0..=i);
         values.swap(i, j);
