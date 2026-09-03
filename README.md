@@ -1,35 +1,45 @@
-VirtualLife
-============
+# VirtualLife
 
-VirtualLife is a life simulator. 
+VirtualLife is a multi-agent laboratory for studying emergent behavior from simple mathematical rules.
 
-It does NOT aim to perform a realistic and highly detailled simulation of the natural world. 
-This simulator is rather oriented toward the computation of generations/turns given a virtual environment, some starting individuals/cells and a set of parameters and rules. 
+The project does **not** aim to simulate biology directly. Agents are generic mathematical entities with state and local interactions. Terms such as predation, resources, species, or genetics may be useful descriptions of observed patterns, but they should not be built into the engine unless the mathematics independently requires them.
 
-It would allow to reproduce something as simple as Conway's Game of Life, to observe the emergence of ecological behaviors (predator–prey, mutualism, ...), or even to identify never observed non-natural patterns and behaviors.
+The code is part of the experiment: keep the model explicit, the implementation small and readable, and the data structures as simple as possible until measurements justify something more sophisticated.
 
-## Development
+## Current status
 
-We propose an iterative development with continuous delivery.
+This branch is the Rust reboot foundation. The bootstrap model deliberately does only enough to validate the architecture:
 
-This project can be started with the simplest model and the naiviest implementation, to be later improved with additional functionnality, more complex models and computationnaly efficient implementations.
+- generic agents with integer properties;
+- a toroidal grid;
+- any number of agents per tile;
+- deterministic random-sequential turns;
+- a headless runner;
+- an optional graphical viewer consuming read-only snapshots without blocking the simulation.
 
-This project will be developped in object-oriented high-level programming language like Python3 (+ potentially the PyPy interpreter). 
-Some computationaly intensive parts of the project could also be written in C. 
-However the priority should first be given to the algorithmic optimization rather than the implementation one.
+The bootstrap movement rule is infrastructure, not a claim about what the first emergence experiment should be. Its exact semantics and open questions are in [`docs/MODEL.md`](docs/MODEL.md).
 
-## Roadmap
+Project principles and instructions for AI/human contributors are in [`AGENTS.md`](AGENTS.md).
 
-This is a proposed roadmap, with ideas more or less structured and/or detailled.
+The original 2014-2016 implementation is preserved on branch [`original-all-manual`](https://github.com/ppericard/virtual-life/tree/original-all-manual).
 
-1. Propose a model for an environment (a grid, for starters) and instances of a basic "cell" with minimal functionnality (move, copy itself, die)
-2. Implement this simplist model as a finite-state automaton
-3. Introduce the notion of "species", which are cells instanciated with different parameters, and that will have different behaviors
-4. Add some ressources to the environment, and relevant functionnalities in the cells (ressources consumption, transformation, ...)
+## Run
 
-* Add some "social" functionnalities between the cells (interaction, ressource exchange, ...)
-* Add a predator-prey interaction
-* Add the sexual reproduction functionnality
+Requires stable Rust with edition 2024 support.
 
-* Once a working prototype is available and manually configurable, an automated upper layer could be added. Using machine learning approaches, this automated layer could run multiple instances of the simulation under varying starting conditions and help identify "interesting" scenarios (extended running life of the species, complex behavior ermergence, ...)
+```bash
+cargo test
+cargo run --release -- 100000
+```
 
+The optional viewer uses `eframe`/`egui`:
+
+```bash
+cargo run --release --features viewer --bin virtual-life-viewer
+```
+
+The viewer runs the simulation on a worker thread and uses bounded, non-blocking snapshot delivery. If rendering falls behind, visual samples are dropped rather than slowing the engine.
+
+## Development rule
+
+Before changing the model, read `AGENTS.md` and `docs/MODEL.md`. Prefer a small concrete implementation over a generalized framework. Benchmark before optimizing.
