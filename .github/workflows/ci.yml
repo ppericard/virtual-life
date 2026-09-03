@@ -12,7 +12,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - run: cargo test
+      - name: Test core
+        run: cargo test > cargo-test.log 2>&1
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-test-log
+          path: cargo-test.log
       - run: cargo check --features viewer --bin virtual-life-viewer
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo fmt --check
