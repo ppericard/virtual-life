@@ -1,4 +1,4 @@
-use rand::{rngs::StdRng, RngExt, SeedableRng};
+use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 use crate::{Agent, Position, Snapshot, World};
 
