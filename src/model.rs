@@ -93,7 +93,10 @@ impl World {
     pub fn remove_agent(&mut self, id: AgentId) -> Option<Agent> {
         let agent = self.agents.get_mut(id.0)?.take()?;
         let index = self.tile_index(agent.position);
-        if let Some(offset) = self.tiles[index].iter().position(|candidate| *candidate == id) {
+        if let Some(offset) = self.tiles[index]
+            .iter()
+            .position(|candidate| *candidate == id)
+        {
             self.tiles[index].swap_remove(offset);
         }
         Some(agent)
@@ -118,7 +121,10 @@ impl World {
 
         let new_index = self.tile_index(destination);
         self.tiles[new_index].push(id);
-        self.agents[id.0].as_mut().expect("agent existed above").position = destination;
+        self.agents[id.0]
+            .as_mut()
+            .expect("agent existed above")
+            .position = destination;
         true
     }
 
