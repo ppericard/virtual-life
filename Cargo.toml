@@ -2,7 +2,7 @@
 name = "virtual-life"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.95"
 description = "A minimal multi-agent laboratory for emergent behavior"
 license = "GPL-3.0-only"
 
