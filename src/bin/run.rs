@@ -5,7 +5,11 @@ use virtual_life::{Simulation, SimulationConfig};
 fn main() {
     let steps = std::env::args()
         .nth(1)
-        .map(|value| value.parse::<u64>().expect("steps must be a positive integer"))
+        .map(|value| {
+            value
+                .parse::<u64>()
+                .expect("steps must be a positive integer")
+        })
         .unwrap_or(100_000);
 
     let mut simulation = Simulation::new(SimulationConfig::default());
