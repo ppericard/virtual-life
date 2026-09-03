@@ -1,1 +1,4 @@
-src/__pycache__
+/target
+.DS_Store
+*.pyc
+__pycache__/
