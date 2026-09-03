@@ -1,5 +1,5 @@
 use std::{
-    sync::mpsc::{self, Receiver, Sender, SyncSender},
+    sync::mpsc::{self, Receiver, SyncSender},
     thread,
     time::Duration,
 };
@@ -32,41 +32,37 @@ fn main() -> eframe::Result {
                 latest = snapshot;
             }
 
-            egui::TopBottomPanel::top("controls").show_inside(ui, |ui| {
-                ui.horizontal(|ui| {
-                    if ui.button(if running { "Pause" } else { "Run" }).clicked() {
-                        running = !running;
-                        let _ = command_tx.send(Command::SetRunning(running));
-                    }
-                    if ui.button("Step").clicked() {
-                        running = false;
-                        let _ = command_tx.send(Command::SetRunning(false));
-                        let _ = command_tx.send(Command::Step);
-                    }
-                    if ui.button("Reset").clicked() {
-                        running = false;
-                        let _ = command_tx.send(Command::SetRunning(false));
-                        let _ = command_tx.send(Command::Reset);
-                    }
-                    ui.label(format!("step {}", latest.step));
-                    ui.label(format!("agents {}", latest.agents.len()));
-                });
-
-                let old_sample_every = sample_every;
-                ui.add(
-                    egui::Slider::new(&mut sample_every, 1..=100_000)
-                        .logarithmic(true)
-                        .text("simulation steps per visual sample"),
-                );
-                if sample_every != old_sample_every {
-                    let _ = command_tx.send(Command::SetSampleEvery(sample_every));
+            ui.horizontal(|ui| {
+                if ui.button(if running { "Pause" } else { "Run" }).clicked() {
+                    running = !running;
+                    let _ = command_tx.send(Command::SetRunning(running));
                 }
+                if ui.button("Step").clicked() {
+                    running = false;
+                    let _ = command_tx.send(Command::SetRunning(false));
+                    let _ = command_tx.send(Command::Step);
+                }
+                if ui.button("Reset").clicked() {
+                    running = false;
+                    let _ = command_tx.send(Command::SetRunning(false));
+                    let _ = command_tx.send(Command::Reset);
+                }
+                ui.label(format!("step {}", latest.step));
+                ui.label(format!("agents {}", latest.agents.len()));
             });
 
-            egui::CentralPanel::default().show_inside(ui, |ui| {
-                draw_world(ui, &latest);
-            });
+            let old_sample_every = sample_every;
+            ui.add(
+                egui::Slider::new(&mut sample_every, 1..=100_000)
+                    .logarithmic(true)
+                    .text("simulation steps per visual sample"),
+            );
+            if sample_every != old_sample_every {
+                let _ = command_tx.send(Command::SetSampleEvery(sample_every));
+            }
 
+            ui.separator();
+            draw_world(ui, &latest);
             ui.ctx().request_repaint_after(Duration::from_millis(16));
         },
     )
