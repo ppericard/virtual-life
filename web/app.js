@@ -40,8 +40,9 @@ async function poll() {
     sample = next;
     connected = true;
     byId('connection').hidden = true;
-    if (receipt && BigInt(sample.tick) >= BigInt(receipt.tick) &&
-        (sample.status === receipt.status || sample.status === 'completed' || BigInt(sample.tick) > BigInt(receipt.tick))) {
+    // commandVersion excludes reads started before the receipt. Another control
+    // can supersede its status at the same tick, so wait only for the applied tick.
+    if (receipt && BigInt(sample.tick) >= BigInt(receipt.tick)) {
       busy = false; receipt = null;
     }
     recordSample(history, sample);

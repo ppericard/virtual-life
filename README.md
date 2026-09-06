@@ -69,6 +69,8 @@ Snapshot IDs, values, ticks, counts, and event totals are decimal **strings**, p
 
 A successful control response is `{"applied":true,"tick":"1","status":"paused",...}` for an already applied action. Single-step applies exactly once while paused. A non-applicable/completed/stopped request returns 409; a full 16-command queue returns 503. Unknown fields, duplicate fields, invalid commands/JSON, oversized bodies, and unsupported content types are rejected. If a receipt times out (504), or the response is lost, its outcome is unknown: inspect the latest tick before another command. The browser **never automatically retries a control**. A rejected completion race cannot report a successful sixth step.
 
+After an applied receipt, the page waits for a snapshot read started after the command response and at or beyond its applied tick. Controls then follow that snapshot's current status: another Pause or Resume can supersede the acknowledged status without advancing the tick. Reads started before or during the command remain ignored.
+
 The server binds IPv4 loopback and validates Host plus Origin. Browser controls require the exact same origin and `application/json`. Local API clients must send `Origin: http://127.0.0.1:PORT` (or the matching localhost origin). Foreign origins/fetch sites are rejected; no wildcard CORS is enabled. Request bodies are capped at 128 bytes, headers at 32 with an 8 KiB parser buffer, and each connection at three seconds including slow responses. Keep-alive is disabled. Excess connections are closed before another parser is allocated. A command queue cannot prevent explicit worker shutdown. This is a local single-user tool, without accounts or remote access.
 
 ## Verification
