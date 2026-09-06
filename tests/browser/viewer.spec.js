@@ -102,6 +102,63 @@ test.describe('completion without a page', () => {
   });
 });
 
+test.describe('same-tick control reconciliation', () => {
+  test.use({serverArgs:['--tick-ms','60000']});
+  test('a superseded receipt releases controls while pre-control reads stay ignored', async ({page,server}) => {
+    await page.goto(server.url);
+    await expect(page.getByRole('button', {name:'Resume',exact:true})).toBeEnabled();
+    const staleRead = Promise.withResolvers(), releaseStale = Promise.withResolvers();
+    const freshRead = Promise.withResolvers(), releaseFresh = Promise.withResolvers();
+    let reads = 0;
+    await page.route('**/api/snapshot', async route => {
+      if (++reads === 1) {
+        // Retain a real pre-control response; all later reads wait before reaching Rust.
+        const response = await route.fetch();
+        staleRead.resolve(await response.json());
+        await releaseStale.promise;
+        await route.fulfill({response});
+      } else {
+        freshRead.resolve();
+        await releaseFresh.promise;
+        await route.continue();
+      }
+    });
+    const current = async () => {
+      const snapshot = await (await page.request.get(`${server.url}/api/snapshot`)).json();
+      return {tick:snapshot.tick,status:snapshot.status};
+    };
+    try {
+      expect(await staleRead.promise).toMatchObject({tick:'0',status:'paused'});
+      await page.getByRole('button', {name:'Resume',exact:true}).click();
+      await expect(page.locator('#control-message')).toHaveText('Resume applied at tick 0.');
+      await expect.poll(current).toEqual({tick:'0',status:'running'});
+      // Another actual same-origin control supersedes Resume without advancing a tick.
+      const paused = await page.request.post(`${server.url}/api/control`, {headers:{Origin:server.url},data:{command:'pause'}});
+      expect(paused.status()).toBe(200);
+      expect(await paused.json()).toMatchObject({applied:true,tick:'0',status:'paused'});
+      await expect.poll(current).toEqual({tick:'0',status:'paused'});
+
+      releaseStale.resolve();
+      await freshRead.promise; // The single polling loop has consumed the stale reply.
+      for (const name of ['Resume','Pause','Single step']) {
+        await expect(page.getByRole('button', {name,exact:true})).toBeDisabled();
+      }
+      releaseFresh.resolve();
+      await expect(page.getByRole('button', {name:'Resume',exact:true})).toBeEnabled();
+      await expect(page.getByRole('button', {name:'Single step'})).toBeEnabled();
+      await expect(page.getByRole('status')).toHaveText('paused');
+      await expect(page.locator('#connection')).toBeHidden();
+      await expect(page.locator('#tick')).toHaveText('0');
+      await page.getByRole('button', {name:'Single step'}).click();
+      await expect(page.locator('#tick')).toHaveText('1');
+      await expect.poll(current).toEqual({tick:'1',status:'paused'});
+    } finally {
+      releaseStale.resolve();
+      releaseFresh.resolve();
+    }
+  });
+});
+
 test('refresh and closing the only page never reset or stop the process', async ({page,context,server}) => {
   await page.goto(server.url);
   await page.getByRole('button', {name:'Single step'}).click();
