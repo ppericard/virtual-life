@@ -248,7 +248,8 @@ impl Run {
             }
 
             // A timeout retries a pending paused/final sample without blocking
-            // on the viewer. Controls wake this wait immediately, including Stop.
+            // on the viewer. Queued controls wake the wait; the independent stop
+            // flag is checked at least every RETRY_INTERVAL.
             let wait = if self.status == Status::Running {
                 self.next_tick
                     .saturating_duration_since(Instant::now())

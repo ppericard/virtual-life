@@ -398,3 +398,74 @@ mod tests {
             .expect("adapter must finish independently of HTTP readers");
     }
 }
+
+#[cfg(test)]
+mod slow_reader_test {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    #[tokio::test]
+    async fn a_backpressured_http_response_does_not_delay_final_cache_publication() {
+        let (worker, api, collector) = start_experiment(
+            Config {
+                ticks: 100,
+                tick_interval: Duration::ZERO,
+                ..Config::default()
+            },
+            1234,
+        )
+        .unwrap();
+        let controls = api.controls.clone();
+        let cache = api.cache.clone();
+        // Hyper serves the actual snapshot handler over a 64-byte transport. After
+        // one byte is read, the response cannot finish until the reader continues.
+        // This gives deterministic backpressure without timing sleeps or huge data.
+        let (mut reader, writer) = tokio::io::duplex(64);
+        let response_task = tokio::spawn(async move {
+            let mut builder = http1::Builder::new();
+            builder.keep_alive(false);
+            builder
+                .serve_connection(
+                    TokioIo::new(writer),
+                    service_fn(move |request| api.clone().handle(request)),
+                )
+                .await
+        });
+        reader
+            .write_all(b"GET /api/snapshot HTTP/1.1\r\nHost: 127.0.0.1:1234\r\n\r\n")
+            .await
+            .unwrap();
+        timeout(REQUEST_TIMEOUT, reader.read_exact(&mut [0u8; 1]))
+            .await
+            .unwrap()
+            .unwrap();
+        let (done, finished) = tokio::sync::oneshot::channel();
+        thread::spawn(move || {
+            controls
+                .request(Command::Resume)
+                .unwrap()
+                .recv_timeout(REQUEST_TIMEOUT)
+                .unwrap();
+            worker.wait_for_completion(REQUEST_TIMEOUT).unwrap();
+            let world = worker.join().unwrap();
+            collector.join().unwrap();
+            let last = cache.lock().unwrap().clone();
+            let _ = done.send((world.tick(), last));
+        });
+        let result = timeout(Duration::from_secs(10), finished).await;
+        let still_blocked = !response_task.is_finished();
+        // Release even on failure so incorrect lock-holding cannot hang cleanup.
+        drop(reader);
+        let _ = timeout(REQUEST_TIMEOUT, response_task).await;
+        let (tick, last) = result
+            .expect("completion must not wait for response consumption")
+            .unwrap();
+        assert!(
+            still_blocked,
+            "the test must actually hold an unfinished response"
+        );
+        assert_eq!(tick, 100);
+        assert_eq!(last["tick"], "100");
+        assert_eq!(last["status"], "completed");
+    }
+}

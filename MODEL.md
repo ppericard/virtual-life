@@ -1,6 +1,6 @@
 # VirtualLife — model and examples
 
-**Status: 6 September 2026 — Task 02 browser replacement under verification.** Pierre's confirmed starting constraints and the deterministic Rust fixture remain unchanged. The browser is the selected interface; see README and the task PR for actual test/CI/visual evidence. This is a bounded fixture, not an approved autonomous research model or evidence of emergence.
+**Status: 6 September 2026 — Task 02 browser demonstrator awaiting review.** Pierre's confirmed starting constraints and the deterministic Rust fixture remain unchanged. The browser is the selected interface; see README and the task PR for actual test/CI/visual evidence. This is a bounded fixture, not an approved autonomous research model or evidence of emergence.
 
 ## Confirmed starting constraints
 
