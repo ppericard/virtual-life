@@ -1,6 +1,6 @@
 # VirtualLife — model and examples
 
-**Status: 6 September 2026.** The starting constraints below are confirmed by Pierre. The deterministic demonstrator is a bounded implementation fixture carried forward from Task 01, not an approved autonomous research model. No Rust implementation or verification is claimed yet.
+**Status: 6 September 2026 — Task 01 implementation, awaiting review.** The starting constraints below are confirmed by Pierre. The deterministic demonstrator is implemented in Rust and covered by executable tests; verification details and remaining platform checks are in README. This is a bounded fixture, not an approved autonomous research model or evidence of emergence.
 
 ## Confirmed starting constraints
 
@@ -19,6 +19,8 @@ These rules specify a small, deterministic test of the machinery. They do not pr
 ### State and input
 
 The grid has width and height of at least 3, avoiding duplicated neighbors on tiny wrapped grids. Validate dimensions, indexing, and occupancy. An agent has a stable numeric ID and one integer `value`; its containing square determines its location. IDs remain unchanged on movement and are unique and non-reusing within a run. Allocate accepted creations in a documented stable order independent of proposal input order. No generic property bag is needed.
+
+The implementation uses `u64` IDs and `i64` values. Accepted creations receive increasing IDs in row-major order of their creators' **starting squares**: increasing y, then x. Allocation starts above the highest initial ID (at 1 for an empty grid), and rejected creations consume no IDs. The largest `u64` is reserved as an exhaustion sentinel; exhausted allocation, tick, or event counters return an error before committing a transition. Setting an unchanged value succeeds as a no-op and adds zero to the value-change total.
 
 A short ordinary function supplies at most one proposal per starting agent: wait, move to a neighboring square, set its own value, create a copy in a neighboring square, or remove itself. Missing proposals mean wait. A copy receives a new ID and the creator's starting value; the creator remains unchanged. Removal is the actor's only action that tick.
 
@@ -51,6 +53,8 @@ Use a 5 × 5 grid with zero-based `(x, y)` coordinates. Initially A (ID 1, value
 | 4 → 5 | C and D remove themselves. | B and E remain; count 2. |
 
 Final state: B (ID 2, value 21) at `(2,2)` and E (ID 5, value 21) at `(1,2)`. Accepted totals: two moves, two creations, three removals, two value changes. The finite demonstration ends clearly; do not present it as autonomous persistence.
+
+The viewer ends at tick 5. A headless request for more than five ticks uses missing proposals (all wait) afterward: only the tick advances, with the final agents, values, IDs, and accepted totals unchanged. A zero-tick request reports the initial state.
 
 ## Observation and controls
 
