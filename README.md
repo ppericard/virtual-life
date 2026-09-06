@@ -10,9 +10,10 @@ The aim is not realistic biology, particle physics, or complicated equations. Un
 
 **Verification is incomplete:** Work reports 21 headless and 22 all-feature tests passing. The lead reviewed the code and assertions but could not rerun Cargo in the review environment. No repository-owned CI exists yet, and the native GUI is built but not visually verified. This is an integrated development baseline, not an accepted release. The detailed review is in PR #2.
 
-**Next bounded task: Task 02 — verification baseline and CI**, tracked in [repository issues](https://github.com/ppericard/virtual-life/issues). Establish reproducible Windows/Linux checks, debug/release headless testing, optional-viewer checks, and focused generated/edge-case tests. Keep the model unchanged. Future work uses task branches and PRs targeting `master`; `restart/rust-v0.1` is no longer the integration target.
+**Task 02 is in progress:** [browser viewer and verification CI (#3)](https://github.com/ppericard/virtual-life/issues/3), based on `4943a324fe610612118ec4e927d70f5b87c12697`, targeting `master`. Pierre chose a small local browser interface on 6 September 2026. This decision supersedes the earlier proposal/native-only wording. The native Rust engine and headless executable stay; the native viewer will be removed after browser replacement coverage passes.
 
-**GUI direction remains a proposal:** a native Rust engine with a small local browser interface is the lead's preferred analytical-tool direction, not an authorized replacement yet. Retain the optional native viewer while the verification task runs; do not expand it into a dashboard or build a parallel browser frontend in that task. A browser task needs an explicit interface/lifecycle checkpoint, including refresh/disconnection behavior and real browser tests. The first autonomous local rules still need to be chosen with Pierre. Live inspection, early state editing, and modest exports remain project goals.
+The first increment adds bounded control requests with worker-applied receipts, exhaustive small-world invariants, integer/full-grid boundary checks, and bounded test cleanup. **29 headless tests pass locally on Linux with the pinned Rust 1.95.0 toolchain.** The engine transition function is unchanged. Browser parity, visual inspection, and repository-owned CI are still pending at this increment. The older native instructions/results below are transitional Task 01 references, not browser verification.
+
 
 ## Starting direction
 

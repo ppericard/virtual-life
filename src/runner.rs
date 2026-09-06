@@ -1,6 +1,8 @@
 //! Thread ownership, controls, pacing, and lossy observation; not model rules.
-use std::sync::mpsc::{
-    self, Receiver, RecvTimeoutError, Sender, SyncSender, TryRecvError, TrySendError,
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+    mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError, TrySendError},
 };
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -11,6 +13,7 @@ use crate::{
 };
 
 pub const SNAPSHOT_CAPACITY: usize = 1;
+pub const COMMAND_CAPACITY: usize = 16;
 const RETRY_INTERVAL: Duration = Duration::from_millis(10);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -72,6 +75,50 @@ pub enum Command {
     Stop,
 }
 
+/// A receipt describes an action already processed between ticks, not enqueueing.
+#[derive(Clone, Debug)]
+pub struct Receipt {
+    pub applied: bool,
+    pub tick: u64,
+    pub status: Status,
+}
+
+struct Request {
+    command: Command,
+    reply: Option<SyncSender<Receipt>>,
+}
+
+#[derive(Clone)]
+pub struct Controls {
+    sender: SyncSender<Request>,
+    stopping: Arc<AtomicBool>,
+}
+
+impl Controls {
+    fn send(&self, command: Command, reply: Option<SyncSender<Receipt>>) -> Result<(), String> {
+        if matches!(command, Command::Stop) {
+            // Shutdown cannot be lost behind a full command queue.
+            self.stopping.store(true, Ordering::Relaxed);
+            return Ok(());
+        }
+        self.sender
+            .try_send(Request { command, reply })
+            .map_err(|error| match error {
+                TrySendError::Full(_) => "control queue is full".into(),
+                TrySendError::Disconnected(_) => "worker has completed or stopped".into(),
+            })
+    }
+
+    pub fn request(&self, command: Command) -> Result<Receiver<Receipt>, String> {
+        if matches!(command, Command::Stop) {
+            return Err("use worker shutdown, not a control receipt, to stop".into());
+        }
+        let (reply, receiver) = mpsc::sync_channel(1);
+        self.send(command, Some(reply))?;
+        Ok(receiver)
+    }
+}
+
 // One queued sample plus one replaceable pending sample: no growing backlog.
 // Only offer() clones cells, at the configured cadence or a control boundary.
 struct Observer {
@@ -104,6 +151,7 @@ struct Run {
     status: Status,
     observer: Observer,
     next_tick: Instant,
+    stopping: Arc<AtomicBool>,
 }
 
 impl Run {
@@ -146,14 +194,31 @@ impl Run {
         Ok(false)
     }
 
+    fn apply_request(&mut self, request: Request) -> Result<bool, String> {
+        let applied = self.status != Status::Completed
+            && (!matches!(request.command, Command::Step) || self.status == Status::Paused);
+        let stop = self.control(request.command)?;
+        if let Some(reply) = request.reply {
+            let _ = reply.try_send(Receipt {
+                applied,
+                tick: self.world.tick(),
+                status: self.status,
+            });
+        }
+        Ok(stop)
+    }
+
     fn work(
         mut self,
-        commands: Receiver<Command>,
+        commands: Receiver<Request>,
         completed: SyncSender<()>,
     ) -> Result<World, String> {
         self.observer.offer(&self.world, self.status);
         let mut announced_completion = false;
         loop {
+            if self.stopping.load(Ordering::Relaxed) {
+                return Ok(self.world);
+            }
             self.observer.flush();
             if self.status == Status::Completed {
                 if !announced_completion {
@@ -169,7 +234,7 @@ impl Run {
             // Commands are processed between complete ticks, before the next one.
             match commands.try_recv() {
                 Ok(command) => {
-                    if self.control(command)? {
+                    if self.apply_request(command)? {
                         return Ok(self.world);
                     }
                     continue;
@@ -193,7 +258,7 @@ impl Run {
             };
             match commands.recv_timeout(wait) {
                 Ok(command) => {
-                    if self.control(command)? {
+                    if self.apply_request(command)? {
                         return Ok(self.world);
                     }
                 }
@@ -205,7 +270,7 @@ impl Run {
 }
 
 pub struct Worker {
-    commands: Sender<Command>,
+    commands: Controls,
     completed: Receiver<()>,
     thread: Option<JoinHandle<Result<World, String>>>,
 }
@@ -225,6 +290,7 @@ impl Worker {
         } else {
             Status::Running
         };
+        let stopping = Arc::new(AtomicBool::new(false));
         let run = Run {
             world: demo::initial_world(),
             config,
@@ -234,8 +300,10 @@ impl Worker {
                 pending: None,
             },
             next_tick,
+            stopping: stopping.clone(),
         };
-        let (commands, receiver) = mpsc::channel();
+        let (sender, receiver) = mpsc::sync_channel(COMMAND_CAPACITY);
+        let commands = Controls { sender, stopping };
         let (finished, completed) = mpsc::sync_channel(1);
         // move transfers ownership into the worker. No UI shares a mutable World.
         let thread = thread::Builder::new()
@@ -250,9 +318,11 @@ impl Worker {
     }
 
     pub fn command(&self, command: Command) -> Result<(), String> {
-        self.commands
-            .send(command)
-            .map_err(|_| "worker has stopped".into())
+        self.commands.send(command, None)
+    }
+
+    pub fn controls(&self) -> Controls {
+        self.commands.clone()
     }
 
     /// A completion signal independent of the snapshot buffer. A timeout is a
@@ -272,7 +342,7 @@ impl Worker {
     }
 
     pub fn stop(mut self) -> Result<World, String> {
-        let _ = self.commands.send(Command::Stop);
+        let _ = self.command(Command::Stop);
         self.join_thread()
     }
 
@@ -288,8 +358,37 @@ impl Worker {
 impl Drop for Worker {
     fn drop(&mut self) {
         if self.thread.is_some() {
-            let _ = self.commands.send(Command::Stop);
+            let _ = self.command(Command::Stop);
             let _ = self.join_thread();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_buffer_is_bounded_and_shutdown_bypasses_a_full_queue() {
+        let (sender, _unread) = mpsc::sync_channel(COMMAND_CAPACITY);
+        let controls = Controls {
+            sender,
+            stopping: Arc::new(AtomicBool::new(false)),
+        };
+        let mut receipts = Vec::new();
+        for _ in 0..COMMAND_CAPACITY {
+            receipts.push(controls.request(Command::Step).unwrap());
+        }
+        assert_eq!(
+            controls.request(Command::Step).unwrap_err(),
+            "control queue is full"
+        );
+        assert!(
+            receipts
+                .iter()
+                .all(|reply| matches!(reply.try_recv(), Err(TryRecvError::Empty)))
+        );
+        controls.send(Command::Stop, None).unwrap();
+        assert!(controls.stopping.load(Ordering::Relaxed));
     }
 }
