@@ -1,6 +1,6 @@
 # VirtualLife — model and examples
 
-**Status: 6 September 2026 — Task 01 source-reviewed development baseline on `master`.** The starting constraints below are confirmed by Pierre. The deterministic demonstrator is implemented in Rust; Work reports passing executable tests, while independent CI and visual verification remain outstanding (see README and PR #2). The archival/master migration changes no model rules. This is a bounded fixture, not an approved autonomous research model or evidence of emergence.
+**Status: 6 September 2026 — Task 02 browser replacement under verification.** Pierre's confirmed starting constraints and the deterministic Rust fixture remain unchanged. The browser is the selected interface; see README and the task PR for actual test/CI/visual evidence. This is a bounded fixture, not an approved autonomous research model or evidence of emergence.
 
 ## Confirmed starting constraints
 
@@ -60,12 +60,16 @@ The viewer ends at tick 5. A headless request for more than five ticks uses miss
 
 The live tool receives immutable, tick-stamped samples without blocking simulation on rendering. Show the grid, inspection of an agent's ID/value, counts, accepted-event totals, and a bounded count-versus-tick plot. Mark sampling gaps; missing samples are not missing simulation steps. Paused and completed runs must make the actual final state available. Headless and observed runs use the same transitions.
 
-Pause/resume and single-step act between ticks; closing the viewer stops its worker cleanly. Speed limiting belongs in the runner, not the transition. State editing and modest exports follow early but are outside Task 01. Record future edits with their applied tick. Lossy live observation is not a complete recording or replay system.
+Pause/resume and single-step act between ticks. Start paused; single-step advances exactly once only while paused, and cannot succeed beyond the finite end. Queued commands are distinguished from worker-applied actions by receipts. Completed state remains readable; stopped/failed or disconnected states are visible. A lost non-idempotent control response is not automatically retried.
+
+The native process owns the experiment. Refreshing, closing, hiding, or disconnecting the browser does not pause, reset, or terminate it. A new page reconnects to its current/final snapshot; page-local plot history starts there without fabricating earlier samples. Ctrl+C explicitly shuts down the server and cleanly stops/joins the worker. Restarting the process starts a new fixture. Speed limiting belongs in the runner, not the transition. State editing and modest exports follow early but are outside Tasks 01–02. Record future edits with their applied tick. Lossy live observation is not a complete recording or replay system.
 
 ## Decisions, limits, and next model checkpoint
 
 **6 September 2026 — geometry and scheduling (Pierre-confirmed):** grid, eight neighbors, single occupancy, comparable scales, and synchronous updates keep the starting algorithm understandable. This does not exclude future changes; occupancy changes may require redesign.
 
 **6 September 2026 — conflict policy (Task 01 working choice):** reject all competing claims and use start-of-tick emptiness. This avoids traversal-order winners and complicated move chains, but can produce congestion. The minimum dimension and integer value are also fixture choices, not universal requirements. Alternatives such as seeded random winners need a model checkpoint rather than an unnoticed implementation change.
+
+**6 September 2026 — browser interface (Pierre's decision):** replace the native window with a small local browser observer/control surface, retaining the native Rust engine and headless execution. Observation is bounded and independent of rendering. Browser lifetime no longer owns worker lifetime. This changes application lifecycle, not transition rules or the scripted table.
 
 **Still open:** the first autonomous properties and decision procedure, local interaction, creation/removal conditions, and any conservation or transfer rules. Do not silently restore the old lifetime distribution, introduce a resource economy, or rename hardcoded biological behavior to make it seem neutral. Scripted tests establish implementation behavior, not emergence. Choose the first autonomous rule set with Pierre after reviewing the live demonstrator.

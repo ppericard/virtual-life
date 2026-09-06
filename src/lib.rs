@@ -4,3 +4,6 @@
 pub mod demo;
 pub mod engine;
 pub mod runner;
+
+#[cfg(feature = "web")]
+pub mod web;
