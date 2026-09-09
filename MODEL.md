@@ -1,6 +1,6 @@
 # VirtualLife — model and examples
 
-**Model status:** the implemented rules below describe the deterministic technical fixture, not an approved autonomous research model or evidence of emergence. The browser is the selected interface. See [README](README.md#current-state-and-next-step) for implementation status and verification; this document records rules, their rationale and open model choices.
+**Model status:** the implemented rules below describe the deterministic technical fixture, not an approved autonomous research model or evidence of emergence. The browser is the selected interface. See [README](README.md) for the project overview and run instructions, and [the development reference](docs/development.md#verification) for checks; this document records rules, their rationale and open model choices.
 
 ## Confirmed starting constraints
 
