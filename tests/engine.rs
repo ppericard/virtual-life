@@ -8,7 +8,11 @@ fn p(x: usize, y: usize) -> Position {
     Position::new(x, y)
 }
 fn a(id: u64, value: i64) -> Agent {
-    Agent { id, value }
+    Agent {
+        id,
+        value,
+        ..Agent::default()
+    }
 }
 fn action(id: u64, action: Action) -> Proposal {
     Proposal::new(id, action)

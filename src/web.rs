@@ -41,17 +41,36 @@ fn status_name(status: Status) -> &'static str {
 /// Decimal strings preserve every bit of Rust's integer domains in JSON/JS.
 /// Only small grid dimensions/indices become JavaScript numbers.
 pub fn snapshot_json(sample: &Snapshot) -> Value {
+    let experiment = sample.experiment.as_ref().map(|info| {
+        let counts = info.counts(&sample.cells);
+        json!({
+            "seed": info.config.seed.to_string(),
+            "generator": crate::experiment::GENERATOR, "version": env!("CARGO_PKG_VERSION"),
+            "occupancy": format!("{}.{:06}", info.config.occupancy / 1_000_000, info.config.occupancy % 1_000_000),
+            "groups": info.groups.iter().enumerate().map(|(index, group)| json!({
+                "weights": group.weights.0, "proportion": group.proportion.to_string(),
+                "initial_count": group.initial_count.to_string(), "count": counts[index].to_string()
+            })).collect::<Vec<_>>()
+        })
+    });
     let cells: Vec<_> = sample
         .cells
         .iter()
         .map(|cell| {
-            cell.map(|agent| json!({"id": agent.id.to_string(), "value": agent.value.to_string()}))
+            cell.map(|agent| {
+                if sample.experiment.is_none() {
+                    return json!({"id": agent.id.to_string(), "value": agent.value.to_string()});
+                }
+                let group = sample.experiment.as_ref().map(|info| info.groups.iter().position(|g| g.weights == agent.weights).expect("configured group"));
+                json!({"id": agent.id.to_string(), "value": agent.value.to_string(), "weights": agent.weights.0, "group": group})
+            })
         })
         .collect();
     json!({
         "width": sample.width, "height": sample.height,
         "tick": sample.tick.to_string(), "count": sample.count.to_string(),
         "status": status_name(sample.status), "cells": cells,
+        "end_tick": sample.end_tick.to_string(), "experiment": experiment,
         "totals": {
             "moves": sample.totals.moves.to_string(),
             "creations": sample.totals.creations.to_string(),
@@ -352,6 +371,8 @@ mod tests {
             tick: u64::MAX,
             count: 2,
             status: Status::Completed,
+            end_tick: u64::MAX,
+            experiment: None,
             totals: Events {
                 moves: u64::MAX,
                 creations: 9_007_199_254_740_993,
@@ -362,10 +383,12 @@ mod tests {
                 Some(Agent {
                     id: u64::MAX - 1,
                     value: i64::MIN,
+                    ..Agent::default()
                 }),
                 Some(Agent {
                     id: 9_007_199_254_740_993,
                     value: i64::MAX,
+                    ..Agent::default()
                 }),
             ],
         };
@@ -427,68 +450,100 @@ mod slow_reader_test {
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    #[tokio::test]
-    async fn a_backpressured_http_response_does_not_delay_final_cache_publication() {
-        let (worker, api, collector) = start_experiment(
-            Config {
+    #[test]
+    fn a_backpressured_http_response_does_not_delay_final_cache_publication() {
+        let (finished, completion) = mpsc::channel();
+        // Guard the runtime and all worker cleanup, including a broken blocking
+        // publisher's destructor. No raw join can hang the test thread.
+        thread::spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(check_backpressured_response());
+            let _ = finished.send(());
+        });
+        completion
+            .recv_timeout(Duration::from_secs(20))
+            .expect("HTTP observation checks exceeded deadlock guard");
+    }
+
+    async fn check_backpressured_response() {
+        for autonomous in [false, true] {
+            let config = Config {
                 ticks: 100,
                 tick_interval: Duration::ZERO,
+                experiment: autonomous.then(|| crate::experiment::ExperimentConfig {
+                    width: 8,
+                    height: 6,
+                    ..crate::experiment::ExperimentConfig::default()
+                }),
                 ..Config::default()
-            },
-            1234,
-        )
-        .unwrap();
-        let controls = api.controls.clone();
-        let cache = api.cache.clone();
-        // Hyper serves the actual snapshot handler over a 64-byte transport. After
-        // one byte is read, the response cannot finish until the reader continues.
-        // This gives deterministic backpressure without timing sleeps or huge data.
-        let (mut reader, writer) = tokio::io::duplex(64);
-        let response_task = tokio::spawn(async move {
-            let mut builder = http1::Builder::new();
-            builder.keep_alive(false);
-            builder
-                .serve_connection(
-                    TokioIo::new(writer),
-                    service_fn(move |request| api.clone().handle(request)),
-                )
-                .await
-        });
-        reader
-            .write_all(b"GET /api/snapshot HTTP/1.1\r\nHost: 127.0.0.1:1234\r\n\r\n")
-            .await
-            .unwrap();
-        timeout(REQUEST_TIMEOUT, reader.read_exact(&mut [0u8; 1]))
-            .await
+            };
+            let expected = Worker::spawn(
+                Config {
+                    start_paused: false,
+                    ..config.clone()
+                },
+                None,
+            )
             .unwrap()
+            .join()
             .unwrap();
-        let (done, finished) = tokio::sync::oneshot::channel();
-        thread::spawn(move || {
-            controls
-                .request(Command::Resume)
-                .unwrap()
-                .recv_timeout(REQUEST_TIMEOUT)
+            let (worker, api, collector) = start_experiment(config, 1234).unwrap();
+            let controls = api.controls.clone();
+            let cache = api.cache.clone();
+            // Hyper serves the actual snapshot handler over a 64-byte transport. After
+            // one byte is read, the response cannot finish until the reader continues.
+            // This gives deterministic backpressure without timing sleeps or huge data.
+            let (mut reader, writer) = tokio::io::duplex(64);
+            let response_task = tokio::spawn(async move {
+                let mut builder = http1::Builder::new();
+                builder.keep_alive(false);
+                builder
+                    .serve_connection(
+                        TokioIo::new(writer),
+                        service_fn(move |request| api.clone().handle(request)),
+                    )
+                    .await
+            });
+            reader
+                .write_all(b"GET /api/snapshot HTTP/1.1\r\nHost: 127.0.0.1:1234\r\n\r\n")
+                .await
                 .unwrap();
-            worker.wait_for_completion(REQUEST_TIMEOUT).unwrap();
-            let world = worker.join().unwrap();
-            collector.join().unwrap();
-            let last = cache.lock().unwrap().clone();
-            let _ = done.send((world.tick(), last));
-        });
-        let result = timeout(Duration::from_secs(10), finished).await;
-        let still_blocked = !response_task.is_finished();
-        // Release even on failure so incorrect lock-holding cannot hang cleanup.
-        drop(reader);
-        let _ = timeout(REQUEST_TIMEOUT, response_task).await;
-        let (tick, last) = result
-            .expect("completion must not wait for response consumption")
-            .unwrap();
-        assert!(
-            still_blocked,
-            "the test must actually hold an unfinished response"
-        );
-        assert_eq!(tick, 100);
-        assert_eq!(last["tick"], "100");
-        assert_eq!(last["status"], "completed");
+            timeout(REQUEST_TIMEOUT, reader.read_exact(&mut [0u8; 1]))
+                .await
+                .unwrap()
+                .unwrap();
+            let (done, finished) = tokio::sync::oneshot::channel();
+            thread::spawn(move || {
+                controls
+                    .request(Command::Resume)
+                    .unwrap()
+                    .recv_timeout(REQUEST_TIMEOUT)
+                    .unwrap();
+                worker.wait_for_completion(REQUEST_TIMEOUT).unwrap();
+                let world = worker.join().unwrap();
+                collector.join().unwrap();
+                let last = cache.lock().unwrap().clone();
+                let _ = done.send((world, last));
+            });
+            let result = timeout(Duration::from_secs(10), finished).await;
+            let still_blocked = !response_task.is_finished();
+            // Release even on failure so incorrect lock-holding cannot hang cleanup.
+            drop(reader);
+            let _ = timeout(REQUEST_TIMEOUT, response_task).await;
+            let (world, last) = result
+                .expect("completion must not wait for response consumption")
+                .unwrap();
+            assert!(
+                still_blocked,
+                "the test must actually hold an unfinished response"
+            );
+            assert_eq!(world, expected);
+            assert_eq!(last["tick"], "100");
+            assert_eq!(last["status"], "completed");
+            assert_eq!(last["count"], expected.count().to_string());
+        }
     }
 }

@@ -8,9 +8,30 @@ pub fn initial_world() -> World {
         5,
         5,
         &[
-            (Position::new(0, 2), Agent { id: 1, value: 10 }),
-            (Position::new(2, 2), Agent { id: 2, value: 20 }),
-            (Position::new(4, 2), Agent { id: 3, value: 30 }),
+            (
+                Position::new(0, 2),
+                Agent {
+                    id: 1,
+                    value: 10,
+                    ..Agent::default()
+                },
+            ),
+            (
+                Position::new(2, 2),
+                Agent {
+                    id: 2,
+                    value: 20,
+                    ..Agent::default()
+                },
+            ),
+            (
+                Position::new(4, 2),
+                Agent {
+                    id: 3,
+                    value: 30,
+                    ..Agent::default()
+                },
+            ),
         ],
     )
     .expect("the documented fixture is valid")

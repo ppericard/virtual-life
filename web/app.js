@@ -1,4 +1,4 @@
-import { drawGrid, drawPlot, gridPosition, recordSample, renderReadouts, sampleDescription } from './display.js';
+import { drawGrid, drawPlot, gridPosition, recordSample, renderReadouts, renderExperiment, groupLabel, sampleDescription } from './display.js';
 const byId = id => document.getElementById(id);
 const history = [];
 const runHeader = 'X-VirtualLife-Run';
@@ -13,9 +13,10 @@ function controls() {
 }
 function render() {
   renderReadouts(sample, selected);
+  renderExperiment(sample);
   const selector = byId('agent');
   selector.replaceChildren(new Option('Choose an agent', ''));
-  for (const agent of sample.cells.filter(Boolean)) selector.add(new Option(`ID ${agent.id} · Value ${agent.value}`, agent.id));
+  for (const agent of sample.cells.filter(Boolean)) selector.add(new Option(`ID ${agent.id} · ${sample.experiment ? `Group ${groupLabel(agent.group)}` : `Value ${agent.value}`}`, agent.id));
   if (selected && !sample.cells.some(agent => agent?.id === selected)) selector.add(new Option(`ID ${selected} · removed`, selected));
   selector.value = selected;
   drawGrid(byId('grid'), sample, selected);

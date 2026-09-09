@@ -2,13 +2,19 @@
 export const HISTORY_LIMIT = 128;
 const colors = ['#c89bc4', '#89baca', '#d6b36e', '#b4bf83', '#97bba0'];
 export function colorFor(id) { return colors[Number(BigInt(id) % BigInt(colors.length))]; }
+// Okabe–Ito-inspired palette; the persistent letter is a second identifier.
+const groupColors = ['#0072b2', '#d55e00', '#009e73', '#cc79a7', '#e69f00', '#56b4e9', '#666666', '#f0e442'];
+export const groupColor = index => groupColors[index % groupColors.length];
+const groupInk = index => [4, 5, 7].includes(index) ? '#203333' : '#ffffff';
+export const groupLabel = index => index < 26 ? String.fromCharCode(65 + index) : `G${index + 1}`;
 
 export function inspectionText(sample, selected) {
   if (!selected) return 'Select an occupied square or choose an agent above.';
   const index = sample.cells.findIndex(agent => agent?.id === selected);
   if (index < 0) return `Agent ${selected} was removed by tick ${sample.tick}.`;
   const agent = sample.cells[index];
-  return `ID ${agent.id} · Value ${agent.value} · Position (${index % sample.width}, ${Math.floor(index / sample.width)})`;
+  const properties = sample.experiment ? `Group ${groupLabel(agent.group)} · Weights (wait, move, copy, remove): ${agent.weights.join(', ')}` : `Value ${agent.value}`;
+  return `ID ${agent.id} · ${properties} · Position (${index % sample.width}, ${Math.floor(index / sample.width)})`;
 }
 
 export function renderReadouts(sample, selected, root = document) {
@@ -17,8 +23,26 @@ export function renderReadouts(sample, selected, root = document) {
   root.getElementById('inspection').textContent = inspectionText(sample, selected);
 }
 
+export function renderExperiment(sample) {
+  document.getElementById('end-tick').textContent = sample.end_tick;
+  document.getElementById('dimensions').textContent = `${sample.width} × ${sample.height} · wraparound edges`;
+  document.getElementById('intro').textContent = sample.experiment ? 'An autonomous experiment. Shared properties, individual choices, synchronous ticks.' : 'Five scripted transitions. A test of the machinery, before autonomous rules.';
+  const legend = document.getElementById('legend'); legend.replaceChildren();
+  document.getElementById('experiment-settings').hidden = !sample.experiment;
+  if (!sample.experiment) return;
+  const info = sample.experiment;
+  document.getElementById('configuration').textContent = `Seed ${info.seed} · ${info.generator} · crate ${info.version} · occupancy ${info.occupancy} (rounded down to an exact count) · ${sample.end_tick} ticks. Illustrative settings, not calibrated biology.`;
+  info.groups.forEach((group, index) => {
+    const row = document.createElement('div'); row.className = 'group-row'; row.dataset.group = String(index);
+    const swatch = document.createElement('span'); swatch.className = 'group-symbol'; swatch.style.backgroundColor = groupColor(index); swatch.style.color = groupInk(index); swatch.textContent = groupLabel(index);
+    const details = document.createElement('span'); details.textContent = `Group ${groupLabel(index)} · ${group.weights.join(' / ')} · ratio ${group.proportion} · initially ${group.initial_count}`;
+    const count = document.createElement('strong'); count.textContent = group.count; count.className = 'group-count';
+    row.append(swatch, details, count); legend.append(row);
+  });
+}
+
 export function recordSample(history, sample) {
-  const point = { tick: sample.tick, count: sample.count };
+  const point = { tick: sample.tick, count: sample.count, groups: sample.experiment?.groups.map(group => group.count) };
   if (history.at(-1)?.tick === point.tick) history[history.length - 1] = point;
   else if (!history.length || BigInt(point.tick) > BigInt(history.at(-1).tick)) history.push(point);
   if (history.length > HISTORY_LIMIT) history.shift();
@@ -26,7 +50,7 @@ export function recordSample(history, sample) {
 
 export function sampleDescription(history) {
   const gaps = history.slice(1).filter((point, index) => BigInt(point.tick) - BigInt(history[index].tick) > 1n).length;
-  return `Observed ticks: ${history.map(point => point.tick).join(', ')}. ${gaps} sampling gap${gaps === 1 ? '' : 's'}. History starts at tick ${history[0]?.tick ?? '—'}.`;
+  return `Observed ticks: ${history.map(point => point.tick).join(', ')}. ${gaps} sampling gap${gaps === 1 ? '' : 's'}. History starts at tick ${history[0]?.tick ?? '—'}.${history.length === HISTORY_LIMIT ? ' Buffer full: older points are discarded as new ticks arrive.' : ''} This is a sampled window, not a complete recording.`;
 }
 
 // Logical canvas coordinates stay fixed; CSS scales them to the window.
@@ -42,22 +66,24 @@ export function drawGrid(canvas, sample, selected) {
   ctx.clearRect(0, 0, 600, 600);
   const w = 540 / sample.width, h = 540 / sample.height;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '16px system-ui'; ctx.fillStyle = '#536662';
-  for (let x = 0; x < sample.width; x++) ctx.fillText(String(x), 40 + (x + .5) * w, 22);
-  for (let y = 0; y < sample.height; y++) ctx.fillText(String(y), 20, 40 + (y + .5) * h);
+  for (let x = 0; x < sample.width; x += Math.max(1, Math.ceil(24 / w))) ctx.fillText(String(x), 40 + (x + .5) * w, 22);
+  for (let y = 0; y < sample.height; y += Math.max(1, Math.ceil(24 / h))) ctx.fillText(String(y), 20, 40 + (y + .5) * h);
   sample.cells.forEach((agent, index) => {
     const x = 40 + (index % sample.width) * w, y = 40 + Math.floor(index / sample.width) * h;
-    ctx.fillStyle = agent ? colorFor(agent.id) : '#f5f7f2';
-    ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
+    ctx.fillStyle = agent ? (sample.experiment ? groupColor(agent.group) : colorFor(agent.id)) : '#f5f7f2';
+    const gap = Math.min(2, Math.min(w, h) / 10);
+    ctx.fillRect(x + gap, y + gap, w - gap * 2, h - gap * 2);
     if (agent) {
-      ctx.fillStyle = '#203333'; ctx.font = '22px system-ui';
-      ctx.fillText(agent.id, x + w / 2, y + h / 2, w - 14);
-      if (agent.id === selected) { ctx.strokeStyle = '#254f45'; ctx.lineWidth = 4; ctx.strokeRect(x + 5, y + 5, w - 10, h - 10); }
+      ctx.fillStyle = sample.experiment ? groupInk(agent.group) : '#203333'; ctx.font = `${sample.experiment ? Math.min(18, Math.min(w, h) * .65) : 22}px system-ui`;
+      if (!sample.experiment || Math.min(w, h) >= 14) ctx.fillText(sample.experiment ? groupLabel(agent.group) : agent.id, x + w / 2, y + h / 2, Math.max(1, w - gap * 2));
+      if (agent.id === selected) { ctx.strokeStyle = '#203333'; ctx.lineWidth = Math.min(4, w / 8); ctx.strokeRect(x + gap, y + gap, w - gap * 2, h - gap * 2); }
     }
   });
   canvas.setAttribute('aria-label', `World at tick ${sample.tick}, ${sample.count} agents. Use the agent selector for exact IDs and values.`);
 }
 
 export function drawPlot(canvas, history) {
+  if (history[0]?.groups) { drawGroupPlot(canvas, history); return; }
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, 600, 230);
   if (!history.length) return;
@@ -83,4 +109,30 @@ export function drawPlot(canvas, history) {
     ctx.fillStyle = '#254f45'; ctx.beginPath(); ctx.arc(x(point), y(point), 5, 0, Math.PI * 2); ctx.fill();
   });
   canvas.setAttribute('aria-label', history.map(p => `Tick ${p.tick}: ${p.count} agents`).join('; '));
+}
+
+function drawGroupPlot(canvas, history) {
+  const ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, 600, 230);
+  const first = BigInt(history[0].tick), last = BigInt(history.at(-1).tick), range = last - first || 1n;
+  const top = Math.max(1, ...history.flatMap(point => point.groups.map(Number)));
+  const x = point => 44 + Number((BigInt(point.tick) - first) * 1_000_000n / range) / 1_000_000 * 485;
+  const y = count => 184 - Number(count) / top * 145;
+  ctx.strokeStyle = '#ccd7d0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(44, 20); ctx.lineTo(44, 184); ctx.lineTo(540, 184); ctx.stroke();
+  ctx.fillStyle = '#536662'; ctx.font = '15px system-ui'; ctx.textAlign = 'left'; ctx.fillText('0', 8, 190); ctx.fillText(String(top), 8, 43, 32); ctx.fillText(history[0].tick, 44, 213);
+  ctx.textAlign = 'right'; ctx.fillText(history.at(-1).tick, 529, 213); ctx.textAlign = 'center'; ctx.fillText('tick', 300, 228);
+  history[0].groups.forEach((_, group) => {
+    ctx.strokeStyle = groupColor(group); ctx.fillStyle = groupColor(group); ctx.lineWidth = 2;
+    ctx.setLineDash([[], [6, 3], [2, 3], [8, 3, 2, 3]][group % 4]);
+    history.forEach((point, index) => {
+      const previous = history[index - 1];
+      if (previous && BigInt(point.tick) - BigInt(previous.tick) === 1n) { ctx.beginPath(); ctx.moveTo(x(previous), y(previous.groups[group])); ctx.lineTo(x(point), y(point.groups[group])); ctx.stroke(); }
+      ctx.beginPath(); ctx.arc(x(point), y(point.groups[group]), 3, 0, Math.PI * 2); ctx.fill();
+    });
+    ctx.setLineDash([]);
+  });
+  // Endpoint letters use separate rows, so extinct/overlapping zero series stay identifiable.
+  const final = history.at(-1);
+  ctx.textAlign = 'left'; ctx.font = '12px system-ui';
+  final.groups.forEach((count, group) => { ctx.fillStyle = groupColor(group); ctx.fillText(`${groupLabel(group)} ${count}`, 544, 28 + group * 18, 55); });
+  canvas.setAttribute('aria-label', history.map(point => `Tick ${point.tick}: ${point.groups.map((count, group) => `Group ${groupLabel(group)} ${count}`).join(', ')}; total ${point.count}`).join('; '));
 }

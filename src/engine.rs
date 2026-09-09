@@ -1,4 +1,15 @@
 //! The transition rules in MODEL.md. No clocks, threads, or observation here.
+use std::collections::{HashMap, HashSet};
+
+/// Behaviour-defining properties, in wait/move/copy/remove order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Weights(pub [u32; 4]);
+
+impl Default for Weights {
+    fn default() -> Self {
+        Self([1, 0, 0, 0])
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Position {
@@ -12,10 +23,11 @@ impl Position {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Agent {
     pub id: u64,
     pub value: i64,
+    pub weights: Weights,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -97,17 +109,13 @@ impl World {
             totals: Events::default(),
             next_id: 1,
         };
+        let mut ids = HashSet::new();
         for &(position, agent) in agents {
             let index = world.index(position)?;
             if world.current[index].is_some() {
                 return Err("initial square is already occupied".into());
             }
-            if world
-                .current
-                .iter()
-                .flatten()
-                .any(|existing| existing.id == agent.id)
-            {
+            if !ids.insert(agent.id) {
                 return Err("initial agent IDs must be unique".into());
             }
             world.next_id = world
@@ -197,12 +205,16 @@ impl World {
         let mut claims = vec![0_usize; self.current.len()];
 
         // Each proposal is attached to its actor's STARTING square.
-        // A linear ID lookup is sufficient for this tiny demonstrator.
+        // Lookup only: map iteration never determines actions or child IDs.
+        let sources: HashMap<_, _> = self
+            .current
+            .iter()
+            .enumerate()
+            .filter_map(|(index, cell)| cell.map(|agent| (agent.id, index)))
+            .collect();
         for proposal in proposals {
-            let source = self
-                .current
-                .iter()
-                .position(|cell| cell.is_some_and(|a| a.id == proposal.actor))
+            let source = *sources
+                .get(&proposal.actor)
                 .ok_or_else(|| format!("unknown starting actor {}", proposal.actor))?;
             if actions[source].is_some() {
                 return Err(format!(
@@ -268,7 +280,7 @@ impl World {
                 Action::Create(target) => {
                     self.next[target.y * self.width + target.x] = Some(Agent {
                         id: child_id,
-                        value: agent.value,
+                        ..agent
                     });
                     child_id += 1;
                 }
