@@ -317,3 +317,210 @@ fn inactivity_never_removes_agents_and_extra_demo_ticks_only_advance_time() {
     assert_eq!(empty.tick(), 1);
     assert_eq!(empty.count(), 0);
 }
+
+#[test]
+fn full_grid_rejects_moves_and_copies_even_when_a_target_is_removed() {
+    let agents: Vec<_> = (0..12)
+        .map(|i| (p(i % 4, i / 4), a(i as u64 + 1, 7)))
+        .collect();
+    for copy in [false, true] {
+        let mut world = World::new(4, 3, &agents).unwrap();
+        let proposals: Vec<_> = agents
+            .iter()
+            .map(|&(position, agent)| {
+                if agent.id == 2 {
+                    return action(agent.id, Remove);
+                }
+                let target = p((position.x + 1) % 4, position.y);
+                action(agent.id, if copy { Create(target) } else { Move(target) })
+            })
+            .collect();
+        assert_eq!(
+            world.step(&proposals).unwrap(),
+            Events {
+                removals: 1,
+                ..Events::default()
+            }
+        );
+        assert_eq!(world.count(), 11);
+        assert_eq!(world.next_id(), 13);
+        assert_eq!(world.agent_at(p(0, 0)).unwrap(), Some(a(1, 7)));
+        assert_eq!(world.agent_at(p(1, 0)).unwrap(), None);
+    }
+}
+
+#[test]
+fn signed_values_copy_and_change_exactly_at_both_boundaries() {
+    let mut world = World::new(3, 4, &[(p(0, 0), a(1, i64::MIN))]).unwrap();
+    assert_eq!(
+        world.step(&[action(1, SetValue(i64::MIN))]).unwrap(),
+        Events::default()
+    );
+    world.step(&[action(1, Create(p(1, 0)))]).unwrap();
+    assert_eq!(world.agent_at(p(1, 0)).unwrap(), Some(a(2, i64::MIN)));
+    world.step(&[action(2, SetValue(i64::MAX))]).unwrap();
+    world.step(&[action(2, Create(p(2, 0)))]).unwrap();
+    assert_eq!(world.agent_at(p(2, 0)).unwrap(), Some(a(3, i64::MAX)));
+    world.step(&[action(2, SetValue(i64::MIN))]).unwrap();
+    assert_eq!(world.totals().value_changes, 2);
+}
+
+#[test]
+fn last_usable_id_is_allocated_once_then_exhaustion_is_atomic() {
+    let mut world = World::new(4, 3, &[(p(0, 0), a(u64::MAX - 2, i64::MAX))]).unwrap();
+    world
+        .step(&[action(u64::MAX - 2, Create(p(1, 0)))])
+        .unwrap();
+    assert_eq!(
+        world.agent_at(p(1, 0)).unwrap(),
+        Some(a(u64::MAX - 1, i64::MAX))
+    );
+    assert_eq!(world.next_id(), u64::MAX);
+    let before = world.clone();
+    assert!(
+        world
+            .step(&[
+                action(u64::MAX - 2, Remove),
+                action(u64::MAX - 1, Create(p(2, 0)))
+            ])
+            .is_err()
+    );
+    assert_eq!(world, before);
+}
+
+// A bounded exhaustive generator: 3 shapes × 64 occupancy masks × 36 two-tick
+// programs. No random generator/dependency/production setter; failures print the
+// shape, mask, program, and tick so the exact case is reproducible.
+#[test]
+fn exhaustive_small_rectangles_and_short_sequences_preserve_invariants() {
+    use std::collections::{BTreeMap, BTreeSet};
+    for (width, height) in [(3, 3), (3, 4), (4, 3)] {
+        for mask in 0..64 {
+            let agents: Vec<_> = (0..6)
+                .filter(|i| mask & (1 << i) != 0)
+                .map(|i| {
+                    let position = p(i % 3, if i < 3 { 0 } else { height - 1 });
+                    (position, a(20 - i as u64, i as i64 - 3))
+                })
+                .collect();
+            for program in 0..36 {
+                let mut world = World::new(width, height, &agents).unwrap();
+                let mut ever: BTreeSet<_> = agents.iter().map(|(_, agent)| agent.id).collect();
+                for tick in 0..2 {
+                    let context =
+                        format!("{width}x{height}, mask={mask}, program={program}, tick={tick}");
+                    let before = world.clone();
+                    let mode = if tick == 0 { program % 6 } else { program / 6 };
+                    let proposals: Vec<_> = before
+                        .cells()
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, cell)| {
+                            cell.map(|agent| {
+                                let position = p(i % width, i / width);
+                                let neighbors = before.neighbors(position).unwrap();
+                                // Mix actions among agents, including conflicting move/copy destinations.
+                                let target = neighbors[(agent.id as usize + mode) % 8];
+                                let intent = match (mode + i) % 6 {
+                                    0 => Wait,
+                                    1 => Remove,
+                                    2 => SetValue(-7),
+                                    3 => SetValue(7),
+                                    4 => Move(target),
+                                    _ => Create(target),
+                                };
+                                action(agent.id, intent)
+                            })
+                        })
+                        .collect();
+                    let mut reversed = proposals.clone();
+                    reversed.reverse();
+                    let mut other = before.clone();
+                    let accepted = world.step(&proposals).unwrap();
+                    other.step(&reversed).unwrap();
+                    assert_eq!(world, other, "order: {context}");
+                    let old: BTreeMap<_, _> = before
+                        .cells()
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, cell)| cell.map(|a| (a.id, (i, a.value))))
+                        .collect();
+                    let now: BTreeMap<_, _> = world
+                        .cells()
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, cell)| cell.map(|a| (a.id, (i, a.value))))
+                        .collect();
+                    assert_eq!(
+                        now.len(),
+                        world.count(),
+                        "unique occupancy/identity: {context}"
+                    );
+                    assert!(now.len() <= width * height, "{context}");
+                    assert_eq!(world.tick(), before.tick() + 1, "{context}");
+                    assert_eq!(
+                        world.count() as u64 + accepted.removals,
+                        before.count() as u64 + accepted.creations,
+                        "count: {context}"
+                    );
+                    assert_eq!(
+                        old.keys().filter(|id| !now.contains_key(id)).count() as u64,
+                        accepted.removals,
+                        "{context}"
+                    );
+                    let born: Vec<_> = now
+                        .keys()
+                        .filter(|id| !old.contains_key(id))
+                        .copied()
+                        .collect();
+                    assert_eq!(
+                        born,
+                        (before.next_id()..world.next_id()).collect::<Vec<_>>(),
+                        "allocation: {context}"
+                    );
+                    assert_eq!(born.len() as u64, accepted.creations, "{context}");
+                    assert!(
+                        born.iter().all(|id| ever.insert(*id)),
+                        "ID reused: {context}"
+                    );
+                    let moved = old
+                        .iter()
+                        .filter(|(id, (i, _))| now.get(id).is_some_and(|(j, _)| i != j))
+                        .count();
+                    let changed = old
+                        .iter()
+                        .filter(|(id, (_, v))| now.get(id).is_some_and(|(_, w)| v != w))
+                        .count();
+                    assert_eq!(moved as u64, accepted.moves, "{context}");
+                    assert_eq!(changed as u64, accepted.value_changes, "{context}");
+                    let totals = world.totals();
+                    let previous = before.totals();
+                    assert_eq!(
+                        totals,
+                        Events {
+                            moves: previous.moves + accepted.moves,
+                            creations: previous.creations + accepted.creations,
+                            removals: previous.removals + accepted.removals,
+                            value_changes: previous.value_changes + accepted.value_changes
+                        },
+                        "{context}"
+                    );
+                    let valid = world.clone();
+                    let mut invalid = vec![action(u64::MAX, Wait)];
+                    if let Some((&id, _)) = now.first_key_value() {
+                        invalid.insert(0, action(id, Remove));
+                    }
+                    assert!(world.step(&invalid).is_err(), "{context}");
+                    assert_eq!(world, valid, "atomic unknown actor: {context}");
+                    if let Some((&id, _)) = now.first_key_value() {
+                        assert!(
+                            world.step(&[action(id, Remove), action(id, Wait)]).is_err(),
+                            "{context}"
+                        );
+                        assert_eq!(world, valid, "atomic duplicate: {context}");
+                    }
+                }
+            }
+        }
+    }
+}

@@ -285,3 +285,77 @@ impl World {
         Ok(accepted)
     }
 }
+
+#[cfg(test)]
+mod boundary_tests {
+    use super::*;
+
+    #[test]
+    fn tick_exhaustion_leaves_both_buffers_and_all_counters_unchanged() {
+        let mut world = crate::demo::initial_world();
+        world.tick = u64::MAX - 1;
+        world
+            .step(&[Proposal::new(1, Action::SetValue(i64::MIN))])
+            .unwrap();
+        assert_eq!(world.tick, u64::MAX);
+        let before = world.clone();
+        assert!(
+            world
+                .step(&[
+                    Proposal::new(1, Action::Remove),
+                    Proposal::new(2, Action::Create(Position::new(3, 2)))
+                ])
+                .is_err()
+        );
+        assert_eq!(world, before);
+    }
+
+    #[test]
+    fn every_event_counter_can_reach_its_limit_then_rejects_atomically() {
+        for intent in [
+            Action::Move(Position::new(1, 2)),
+            Action::Create(Position::new(1, 2)),
+            Action::Remove,
+            Action::SetValue(i64::MAX),
+        ] {
+            let mut world = crate::demo::initial_world();
+            let counter = match intent {
+                Action::Move(_) => &mut world.totals.moves,
+                Action::Create(_) => &mut world.totals.creations,
+                Action::Remove => &mut world.totals.removals,
+                Action::SetValue(_) => &mut world.totals.value_changes,
+                _ => unreachable!(),
+            };
+            *counter = u64::MAX;
+            let before = world.clone();
+            assert!(
+                world
+                    .step(&[
+                        Proposal::new(1, intent),
+                        Proposal::new(3, Action::SetValue(99))
+                    ])
+                    .is_err()
+            );
+            assert_eq!(world, before, "{intent:?}");
+            let counter = match intent {
+                Action::Move(_) => &mut world.totals.moves,
+                Action::Create(_) => &mut world.totals.creations,
+                Action::Remove => &mut world.totals.removals,
+                Action::SetValue(_) => &mut world.totals.value_changes,
+                _ => unreachable!(),
+            };
+            *counter = u64::MAX - 1;
+            world.step(&[Proposal::new(1, intent)]).unwrap();
+            let totals = world.totals;
+            assert!(
+                [
+                    totals.moves,
+                    totals.creations,
+                    totals.removals,
+                    totals.value_changes
+                ]
+                .contains(&u64::MAX)
+            );
+        }
+    }
+}

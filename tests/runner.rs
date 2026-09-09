@@ -6,10 +6,60 @@ use std::{
 use virtual_life::{
     demo,
     engine::World,
-    runner::{Command, Config, SNAPSHOT_CAPACITY, Snapshot, Status, Worker},
+    runner::{Command, Config, SNAPSHOT_CAPACITY, Snapshot, Status, Worker as RawWorker},
 };
 
 const GUARD: Duration = Duration::from_secs(10);
+
+// Even an intentionally broken worker must fail within GUARD during unwinding.
+// Keep blocking joins off the test thread; the Rust test process owns any failed
+// detached thread and will exit. This is a deadlock guard, not timing evidence.
+struct Worker(Option<RawWorker>);
+impl std::ops::Deref for Worker {
+    type Target = RawWorker;
+    fn deref(&self) -> &RawWorker {
+        self.0.as_ref().unwrap()
+    }
+}
+fn guarded_join(
+    work: impl FnOnce() -> Result<World, String> + Send + 'static,
+) -> Result<World, String> {
+    let (send, receive) = mpsc::channel();
+    thread::spawn(move || {
+        let _ = send.send(work());
+    });
+    receive
+        .recv_timeout(GUARD)
+        .expect("worker join exceeded deadlock guard")
+}
+impl Worker {
+    fn spawn(config: Config, sender: Option<mpsc::SyncSender<Snapshot>>) -> Result<Self, String> {
+        RawWorker::spawn(config, sender).map(|worker| Self(Some(worker)))
+    }
+    fn join(mut self) -> Result<World, String> {
+        let worker = self.0.take().unwrap();
+        guarded_join(move || worker.join())
+    }
+    fn stop(mut self) -> Result<World, String> {
+        let worker = self.0.take().unwrap();
+        guarded_join(move || worker.stop())
+    }
+}
+impl Drop for Worker {
+    fn drop(&mut self) {
+        if let Some(worker) = self.0.take() {
+            let (send, receive) = mpsc::channel();
+            thread::spawn(move || {
+                drop(worker);
+                let _ = send.send(());
+            });
+            let result = receive.recv_timeout(GUARD);
+            if !thread::panicking() {
+                result.expect("worker drop exceeded deadlock guard");
+            }
+        }
+    }
+}
 
 fn fast() -> Config {
     Config {
@@ -234,4 +284,60 @@ fn zero_ticks_completes_without_activation_and_invalid_config_is_rejected() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn receipts_distinguish_applied_steps_from_running_and_completed_rejections() {
+    let worker = Worker::spawn(
+        Config {
+            tick_interval: Duration::from_secs(3600),
+            ..Config::default()
+        },
+        None,
+    )
+    .unwrap();
+    let controls = worker.controls();
+    let receipt = controls
+        .request(Command::Step)
+        .unwrap()
+        .recv_timeout(GUARD)
+        .unwrap();
+    assert!(receipt.applied);
+    assert_eq!(receipt.tick, 1);
+    assert_eq!(receipt.status, Status::Paused);
+    let resumed = controls
+        .request(Command::Resume)
+        .unwrap()
+        .recv_timeout(GUARD)
+        .unwrap();
+    assert!(resumed.applied);
+    assert_eq!(resumed.tick, 1);
+    let rejected = controls
+        .request(Command::Step)
+        .unwrap()
+        .recv_timeout(GUARD)
+        .unwrap();
+    assert!(!rejected.applied);
+    assert_eq!(rejected.tick, 1);
+    controls
+        .request(Command::Pause)
+        .unwrap()
+        .recv_timeout(GUARD)
+        .unwrap();
+    for tick in 2..=5 {
+        let receipt = controls
+            .request(Command::Step)
+            .unwrap()
+            .recv_timeout(GUARD)
+            .unwrap();
+        assert!(receipt.applied);
+        assert_eq!(receipt.tick, tick);
+    }
+    // Completion can race a queued request: rejection OR closed receiver, never a sixth step.
+    if let Ok(receiver) = controls.request(Command::Step)
+        && let Ok(receipt) = receiver.recv_timeout(GUARD)
+    {
+        assert!(!receipt.applied);
+    }
+    assert_eq!(worker.join().unwrap().tick(), 5);
 }
