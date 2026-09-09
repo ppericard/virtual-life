@@ -33,40 +33,60 @@ export const test = base.extend({
   serverArgs: [[], { option: true }],
   server: async ({ serverArgs }, use, testInfo) => {
     let logs = '';
-    let reportOutput = () => {};
-    const child = await spawnServer(path.resolve('target/debug', process.platform === 'win32' ? 'web.exe' : 'web'), ['--port', '0', ...serverArgs], data => {
-      logs += data;
-      reportOutput();
-    });
-    const { exited } = child;
-    let hasExited = false;
-    exited.then(() => { hasExited = true; }, () => { hasExited = true; });
-    const ready = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`Server startup timeout\n${logs}`)), 10000);
-      exited.then(() => { clearTimeout(timer); reject(new Error(`Server exited during startup\n${logs}`)); }, error => { clearTimeout(timer); reject(error); });
-      reportOutput = () => {
-        // Output can arrive in chunks; wait for the whole line, including the port.
-        const match = stripVTControlCharacters(logs).match(/VirtualLife (http:\/\/127\.0\.0\.1:\d+)\r?\n/);
-        if (match) { clearTimeout(timer); resolve(match[1]); }
-      };
-      reportOutput();
-    });
-    let stopped = false;
-    async function stop() {
-      if (stopped) return;
-      stopped = true;
-      if (!hasExited) child.interrupt();
-      let timer;
-      let result;
-      try { result = await Promise.race([exited, new Promise(resolve => { timer = setTimeout(() => resolve(null), 8000); })]); }
-      finally { clearTimeout(timer); }
-      if (!result) { child.kill(); throw new Error('Server did not stop cleanly within the shutdown guard'); }
-      expect(result).toEqual({ code: 0, signal: null });
+    async function start(port) {
+      let runLogs = '';
+      let reportOutput = () => {};
+      const child = await spawnServer(path.resolve('target/debug', process.platform === 'win32' ? 'web.exe' : 'web'), ['--port', String(port), ...serverArgs], data => {
+        logs += data;
+        runLogs += data;
+        reportOutput();
+      });
+      const { exited } = child;
+      let hasExited = false;
+      exited.then(() => { hasExited = true; }, () => { hasExited = true; });
+      const ready = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`Server startup timeout\n${logs}`)), 10000);
+        exited.then(() => { clearTimeout(timer); reject(new Error(`Server exited during startup\n${logs}`)); }, error => { clearTimeout(timer); reject(error); });
+        reportOutput = () => {
+          // Output can arrive in chunks; wait for the whole line, including the port.
+          const match = stripVTControlCharacters(runLogs).match(/VirtualLife (http:\/\/127\.0\.0\.1:\d+)\r?\n/);
+          if (match) { clearTimeout(timer); resolve(match[1]); }
+        };
+        reportOutput();
+      });
+      let stopped = false;
+      async function stop() {
+        if (stopped) return;
+        stopped = true;
+        if (!hasExited) child.interrupt();
+        let timer;
+        let result;
+        try { result = await Promise.race([exited, new Promise(resolve => { timer = setTimeout(() => resolve(null), 8000); })]); }
+        finally { clearTimeout(timer); }
+        if (!result) { child.kill(); throw new Error('Server did not stop cleanly within the shutdown guard'); }
+        logs += `Server exit: ${JSON.stringify(result)}\n`;
+        expect(result).toEqual({ code: 0, signal: null });
+      }
+      return { ready, stop };
     }
-    try { await use({ url: await ready, stop }); }
+    let run;
+    try {
+      run = await start(0);
+      const url = await run.ready;
+      await use({
+        url,
+        stop: () => run.stop(),
+        restart: async () => {
+          // Real process replacement at the same origin, never an API reset.
+          await run.stop();
+          run = await start(new URL(url).port);
+          expect(await run.ready).toBe(url);
+        },
+      });
+    }
     finally {
       let shutdownFailed = false;
-      try { await stop(); }
+      try { await run?.stop(); }
       catch (error) { shutdownFailed = true; throw error; }
       finally {
         if (shutdownFailed || testInfo.status !== testInfo.expectedStatus) await testInfo.attach('server.log', { body: logs, contentType: 'text/plain' });

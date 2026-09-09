@@ -22,9 +22,9 @@ cargo run --locked --features web --bin web -- --running --tick-ms 1000 --sample
 
 `--port N` selects an IPv4 loopback port (`0` chooses a free one). `--sample-every N` must be positive; its default is 1. `--tick-ms N` accepts 0–60000, defaults to 750, and sets a minimum interval when running. Zero removes pacing and may leave only initial/final samples visible. Pacing is a speed ceiling, not a real-time guarantee. Both binaries support `--help`.
 
-**Lifecycle:** the Rust process owns one experiment. Refreshing, closing, hiding or disconnecting a page neither pauses, resets nor stops it. A new page reads the current/final cache; its plot starts with the first sample actually received. Stop the server with **Ctrl+C in its terminal**. In-flight connections have a three-second deadline; shutdown then stops/joins the worker and collector. To repeat the fixture, restart the executable and reload any retained page. There is no reset endpoint or persistence.
+**Lifecycle:** the Rust process owns one experiment. Refreshing, closing, hiding or disconnecting a page neither pauses, resets nor stops it. A new page reads the current/final cache; its plot starts with the first sample actually received. Stop the server with **Ctrl+C in its terminal**. In-flight connections have a three-second deadline; shutdown then stops/joins the worker and collector. To repeat the fixture, restart the executable; retained pages recognise the new run automatically. There is no reset endpoint or persistence.
 
-A retained page cannot yet distinguish successive server runs; reloading after restart is required. The reproduction and recovery-policy discussion are tracked in [issue #5](https://github.com/ppericard/virtual-life/issues/5).
+A different run clears page-local history, selection and outstanding control state, with a visible new-experiment notice. The page follows the new run's actual status without resuming, stepping or retrying old commands. Reconnecting to the same run retains its history. Reload the page after changing browser assets to load the newly compiled version.
 
 ## Algorithm and code-reading order
 
@@ -58,7 +58,11 @@ Snapshot IDs, values, ticks, counts and event totals are decimal **strings**, pr
 
 An applied control returns `{"applied":true,"tick":"1","status":"paused",...}`. Single-step advances exactly once while paused, never beyond completion. A non-applicable/completed/stopped request returns 409; a full 16-command queue returns 503. Unknown/duplicate fields, malformed JSON, invalid commands, oversized bodies and unsupported content types are rejected. A 504 receipt timeout or lost response means the outcome is unknown: inspect the current tick before another command. **The browser never automatically retries controls.**
 
-Within a run, after an applied receipt the page waits for a snapshot read started after the response and at or beyond its applied tick. Controls follow that snapshot's current status, since another command can supersede the acknowledged status at the same tick. Reads spanning a command are excluded from receipt reconciliation. Cross-run identity is the separate limitation described under [Running options](#running-options).
+Within a run, after an applied receipt the page waits for a snapshot read started after the response and at or beyond its applied tick. Controls follow that snapshot's current status, since another command can supersede the acknowledged status at the same tick. Reads spanning a command are excluded from receipt reconciliation. A run change also retires pending command callbacks, so late replies or errors cannot alter the new page state.
+
+Every allowed HTTP response carries `X-VirtualLife-Run`, an opaque 128-bit identifier generated once for the adapter instance using the optional `getrandom` library. This avoids clock/PID reuse without changing engine state, simulation randomness or the JSON schema. Failure to obtain OS randomness fails startup. The identifier is not authentication or a persistence/replay key.
+
+Browser controls echo that header as a precondition: a mismatched or repeated header returns 409 before queueing a command. Existing local API clients may omit it for compatibility; clients needing restart safety should echo the most recently observed identifier. A tick decrease is not used to detect restarts.
 
 The server binds IPv4 loopback and validates Host/Origin. Controls require the matching same origin and `application/json`; local API clients must send `Origin: http://127.0.0.1:PORT` (or the matching localhost origin). Foreign origins/fetch sites are rejected; there is no wildcard CORS. Bodies are capped at 128 bytes, headers at 32 with an 8 KiB parser buffer, and connections at three seconds including slow responses. Keep-alive is disabled; excess connections close before allocating another parser. A full command queue cannot prevent explicit worker shutdown. This is a local single-user tool, not an authenticated remote service.
 
@@ -88,7 +92,7 @@ git diff --check
 
 Tests cover the worked states, proposal order, generated short sequences, identity/occupancy/count invariants, atomic rejection and integer exhaustion; runner tests exercise controls and disabled, saturated or disconnected observation. Real API and deterministic backpressure tests check that slow/absent readers do not prevent completion or final-cache publication. Cleanup uses bounded deadlock guards, not sleeps as proof of correctness.
 
-Each Playwright scenario starts a **fresh Rust process**, not just a fresh browser context. Tests cover actual grid pixels/clicks, inspection, controls/completion races, same-tick superseded receipts, refresh/reconnect, absent pages, network errors, lost replies, gaps, narrow layout and graceful shutdown. Synthetic extreme-value display checks are supplemental, not substitutes for the real-fixture tests. Node tests check bounded history and exact values. Documentation tests are invoked, but there are currently no executable doc examples.
+Each Playwright scenario starts a **fresh Rust process**, not just a fresh browser context. Tests cover actual grid pixels/clicks, inspection, controls/completion races, same-tick superseded receipts, refresh/reconnect, absent pages, network errors, lost replies, gaps, narrow layout and graceful shutdown. Restart tests replace the real process at the same address and exercise retained history/receipts, equal ticks, same-run reconnect and delayed old commands/replies. Synthetic extreme-value display checks are supplemental, not substitutes for the real-fixture tests. Node tests check bounded history and exact values. Documentation tests are invoked, but there are currently no executable doc examples.
 
 On Windows the fixture uses node-pty's private terminal to send real Ctrl+C, rather than Node's forceful `child.kill('SIGINT')`. Linux uses its ordinary process/SIGINT path. Both must exit cleanly within the guard; forced cleanup fails. node-pty requires Windows 10 version 1809 or newer. Where no packaged native binary is available, `npm ci` needs native build prerequisites; see [node-pty's prerequisites](https://github.com/microsoft/node-pty#dependencies). These requirements apply to testing, not running VirtualLife.
 
@@ -102,9 +106,9 @@ Firefox/WebKit, macOS, manual keyboard/assistive-technology behaviour and throug
 
 ## Implementation limits
 
-Agents have only an ID and integer value. There are no autonomous rules, production randomness, automatic expiry, resource classes, generic property framework, world editing, persistence, replay, exports, WebAssembly engine, cloud deployment or analysis framework. Multiple occupancy, variable sizes and continuous space remain possible future decisions, not implemented abstractions.
+Agents have only an ID and integer value. There are no autonomous rules, simulation randomness, automatic expiry, resource classes, generic property framework, world editing, persistence, replay, exports, WebAssembly engine, cloud deployment or analysis framework. Multiple occupancy, variable sizes and continuous space remain possible future decisions, not implemented abstractions.
 
-Linear actor lookup costs O(grid squares × proposals), plus O(grid squares) passes. This is a tiny-fixture simplicity trade-off, not a scaling claim; measure a real experimental workload before optimising. Page history and selection are lost on refresh, multiple pages share one experiment/control surface, and abrupt process termination loses the run. Reload after a process restart until issue #5 is resolved.
+Linear actor lookup costs O(grid squares × proposals), plus O(grid squares) passes. This is a tiny-fixture simplicity trade-off, not a scaling claim; measure a real experimental workload before optimising. Page history and selection are lost on refresh, multiple pages share one experiment/control surface, and abrupt process termination loses the run. A new run deliberately discards the old page-local observations; they are not saved.
 
 ## Historical references
 
