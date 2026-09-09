@@ -26,7 +26,7 @@ Open the printed address, normally **http://127.0.0.1:7878**, in your browser. U
 
 The executable currently runs a **five-tick scripted demonstration**, not autonomous behaviour. It starts paused and keeps the final state visible when finished.
 
-Stop the server with **Ctrl+C in the terminal**; closing the browser does not stop the experiment. To repeat it, restart the command and reload the page.
+Stop the server with **Ctrl+C in the terminal**; closing the browser does not stop the experiment. To repeat it, restart the command. An open page reconnects automatically, clears its old history and selection, and shows a new-experiment notice.
 
 To run without a browser:
 

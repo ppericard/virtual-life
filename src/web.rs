@@ -11,6 +11,7 @@ use http_body_util::{BodyExt, Full, Limited};
 use hyper::{
     Request, Response, StatusCode,
     body::{Bytes, Incoming},
+    header::HeaderValue,
     server::conn::http1,
     service::service_fn,
 };
@@ -24,6 +25,7 @@ pub const MAX_CONNECTIONS: usize = 16;
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 const CONTROL_TIMEOUT: Duration = Duration::from_secs(1);
 const BODY_LIMIT: usize = 128;
+const RUN_HEADER: &str = "x-virtuallife-run";
 
 type Body = Full<Bytes>;
 type Cache = Arc<Mutex<Value>>;
@@ -70,6 +72,7 @@ struct Api {
     cache: Cache,
     controls: Controls,
     port: u16,
+    run_id: HeaderValue,
 }
 
 fn response(status: StatusCode, content_type: &str, body: impl Into<Bytes>) -> Response<Body> {
@@ -127,7 +130,7 @@ impl Api {
                 "Host or Origin is not allowed",
             ));
         }
-        let reply = match (request.method().as_str(), request.uri().path()) {
+        let mut reply = match (request.method().as_str(), request.uri().path()) {
             ("GET", "/") => response(
                 StatusCode::OK,
                 "text/html; charset=utf-8",
@@ -154,10 +157,22 @@ impl Api {
             ("POST", "/api/control") => self.control(request).await,
             _ => error(StatusCode::NOT_FOUND, "unknown route or method"),
         };
+        reply.headers_mut().insert(RUN_HEADER, self.run_id.clone());
         Ok(reply)
     }
 
     async fn control(&self, request: Request<Incoming>) -> Response<Body> {
+        // Browser commands name the run they were sent for. Local API clients
+        // may omit this precondition for compatibility with existing scripts.
+        if let Some(run_id) = request.headers().get(RUN_HEADER)
+            && (run_id.as_bytes() != self.run_id.as_bytes()
+                || request.headers().get_all(RUN_HEADER).iter().count() != 1)
+        {
+            return error(
+                StatusCode::CONFLICT,
+                "experiment changed; read the new snapshot",
+            );
+        }
         if request
             .headers()
             .get("content-type")
@@ -234,6 +249,13 @@ fn start_experiment(
     config: Config,
     port: u16,
 ) -> Result<(Worker, Api, thread::JoinHandle<()>), String> {
+    // Identity belongs to this adapter instance, not to model state or tick time.
+    // OS randomness avoids clock/PID reuse; no simulation randomness is added.
+    let mut identity = [0_u8; 16];
+    getrandom::fill(&mut identity).map_err(|e| format!("cannot identify experiment: {e}"))?;
+    let run_id = format!("{:032x}", u128::from_be_bytes(identity))
+        .parse()
+        .expect("hexadecimal run ID is a valid header");
     let (sender, receiver) = mpsc::sync_channel(SNAPSHOT_CAPACITY);
     let worker = Worker::spawn(config, Some(sender))?;
     // Publish even when no HTTP client exists. This collector is not browser-owned.
@@ -260,6 +282,7 @@ fn start_experiment(
         cache,
         controls: worker.controls(),
         port,
+        run_id,
     };
     Ok((worker, api, collector))
 }

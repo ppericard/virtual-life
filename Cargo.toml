@@ -9,9 +9,10 @@ default-run = "headless"
 
 [features]
 default = []
-web = ["dep:hyper", "dep:hyper-util", "dep:http-body-util", "dep:tokio", "dep:serde_json", "dep:serde"]
+web = ["dep:hyper", "dep:hyper-util", "dep:http-body-util", "dep:tokio", "dep:serde_json", "dep:serde", "dep:getrandom"]
 
 [dependencies]
+getrandom = { version = "0.4.3", optional = true }
 hyper = { version = "1.10", optional = true, features = ["http1", "server"] }
 hyper-util = { version = "0.1", optional = true, features = ["tokio"] }
 http-body-util = { version = "0.1", optional = true }
