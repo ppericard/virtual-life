@@ -1,6 +1,6 @@
 # VirtualLife — model and examples
 
-**Status: 6 September 2026 — Task 02 browser demonstrator awaiting review.** Pierre's confirmed starting constraints and the deterministic Rust fixture remain unchanged. The browser is the selected interface; see README and the task PR for actual test/CI/visual evidence. This is a bounded fixture, not an approved autonomous research model or evidence of emergence.
+**Model status:** the implemented rules below describe the deterministic technical fixture, not an approved autonomous research model or evidence of emergence. The browser is the selected interface. See [README](README.md) for the project overview and run instructions, and [the development reference](docs/development.md#verification) for checks; this document records rules, their rationale and open model choices.
 
 ## Confirmed starting constraints
 
@@ -73,3 +73,14 @@ The native process owns the experiment. Refreshing, closing, hiding, or disconne
 **6 September 2026 — browser interface (Pierre's decision):** replace the native window with a small local browser observer/control surface, retaining the native Rust engine and headless execution. Observation is bounded and independent of rendering. Browser lifetime no longer owns worker lifetime. This changes application lifecycle, not transition rules or the scripted table.
 
 **Still open:** the first autonomous properties and decision procedure, local interaction, creation/removal conditions, and any conservation or transfer rules. Do not silently restore the old lifetime distribution, introduce a resource economy, or rename hardcoded biological behavior to make it seem neutral. Scripted tests establish implementation behavior, not emergence. Choose the first autonomous rule set with Pierre after reviewing the live demonstrator.
+
+## Preparing the first autonomous experiment
+
+Choose one small experiment with Pierre before implementing new rules. These are discussion prompts, not selected behaviour or a new specification template:
+
+- What question should the experiment make observable, and what initial arrangement will help investigate it?
+- What named properties does an individual carry, what local information can it read, and how does it choose its action?
+- When can creation or removal happen? Are any quantities transferred or conserved, and how are incompatible proposals resolved? Do not assume the fixture's action vocabulary already supports joint interactions.
+- What should a few worked ticks do, what invariants must always hold, and what behaviour remains genuinely open? If randomness is chosen, specify reproducibility inputs as well.
+
+Record the agreed rules and rationale here, then implement one bounded headless-and-observable increment with matching tests. Keep the scripted fixture as regression coverage. The walkthrough should let Pierre follow one individual's decision, predict a small example and find its Rust implementation. Understanding the algorithm and investigating the question are useful outcomes; spectacular emergence is not a release gate. No new autonomous rule is selected by this preparation.
