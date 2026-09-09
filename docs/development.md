@@ -4,7 +4,7 @@ Start with [README](../README.md) for the project overview and quick start. This
 
 ## Running options
 
-Headless builds use only the standard-library engine and runner:
+Headless builds use only the standard-library engine, seeded policy and runner:
 
 ```sh
 cargo run --locked --no-default-features --bin headless -- --ticks 0
@@ -12,7 +12,7 @@ cargo run --locked --no-default-features --bin headless -- --ticks 5
 cargo run --locked --no-default-features --bin headless -- --ticks 8
 ```
 
-The default is five ticks. Tick 0 contains three agents. At tick 5, IDs 2 and 5 have value 21 at `(2,2)` and `(1,2)`, respectively; accepted totals are two moves, two creations, three removals and two value changes. Headless requests beyond five run all-wait ticks: only the tick advances. Invalid or overflowing arguments fail with a message.
+For compatibility, the default mode is `demo`, with five ticks. Tick 0 contains three agents. At tick 5, IDs 2 and 5 have value 21 at `(2,2)` and `(1,2)`, respectively; accepted totals are two moves, two creations, three removals and two value changes. Headless requests beyond five run all-wait ticks: only the tick advances. Invalid or overflowing arguments fail with a message.
 
 Browser launch options include:
 
@@ -20,9 +20,23 @@ Browser launch options include:
 cargo run --locked --features web --bin web -- --running --tick-ms 1000 --sample-every 2
 ```
 
-`--port N` selects an IPv4 loopback port (`0` chooses a free one). `--sample-every N` must be positive; its default is 1. `--tick-ms N` accepts 0–60000, defaults to 750, and sets a minimum interval when running. Zero removes pacing and may leave only initial/final samples visible. Pacing is a speed ceiling, not a real-time guarantee. Both binaries support `--help`.
+`--port N` selects an IPv4 loopback port (`0` chooses a free one). `--sample-every N` must be positive; its default is 1. `--tick-ms N` accepts 0–60000, defaults to 100 in autonomous mode or 750 in demo mode, and sets a minimum interval when running. Zero removes pacing and may leave only initial/final samples visible. Pacing is a speed ceiling, not a real-time guarantee. Both binaries support `--help`.
 
-**Lifecycle:** the Rust process owns one experiment. Refreshing, closing, hiding or disconnecting a page neither pauses, resets nor stops it. A new page reads the current/final cache; its plot starts with the first sample actually received. Stop the server with **Ctrl+C in its terminal**. In-flight connections have a three-second deadline; shutdown then stops/joins the worker and collector. To repeat the fixture, restart the executable; retained pages recognise the new run automatically. There is no reset endpoint or persistence.
+### Autonomous configuration and reproduction
+
+```sh
+cargo run --locked --features web --bin web -- --mode autonomous --seed 1 --ticks 500
+cargo run --locked --no-default-features --bin headless -- --mode autonomous --seed 1 --ticks 500
+cargo run --locked --features web --bin web -- --mode autonomous --width 8 --height 6 --occupancy 0.3 --bundles "4,5,1,1;4,3,2,1;6,2,1,1;2,6,2,1" --proportions 1,1,1,1 --seed 1 --ticks 80 --tick-ms 100 --sample-every 1
+```
+
+Both shells require quoting semicolon-separated bundles. `--bundles` gives wait/move/copy/remove integer weights per bundle; `--proportions` gives one nonnegative integer ratio per supplied bundle. Defaults are the four bundles and equal ratios in MODEL. One to eight **distinct** bundles are supported; repeated identical tuples combine ratios into the first canonical group. Grid dimensions must each be at least 3 with at most 262,144 squares. Occupancy is a fraction 0–1 with up to six decimal places, not a percentage. Total and per-group initial counts are exact after the floor/largest-remainder allocation described in MODEL. Zero weight actions, zero-ratio groups and empty/full worlds are allowed; all-zero bundle weights or all-zero ratios are errors. Autonomous-only settings in demo mode are rejected so ignored configuration cannot masquerade as a different run.
+
+`--seed` accepts an unsigned 64-bit integer, including zero. `--ticks` is a finite unsigned 64-bit limit; zero reports the initial state as completed. Autonomous defaults are 32 × 24, 0.3 occupancy, seed 1 and 500 ticks. CLI `--help` lists all options. Output records effective canonical settings, seed, SplitMix64 / VirtualLife sampling v1, crate version and actual initial counts; the browser retains those alongside the final state. Headless output also prints final group counts and every surviving individual's ID, weights and position. Save the command, source commit and Cargo.lock with any result to reproduce it; arbitrary version changes are not covered by a seed guarantee.
+
+In the browser, group letters and colours match grid, legend and plot. The legend uses wait/move/copy/remove order and shows initial/current counts; clicking an agent shows its stable ID and actual properties. Small cells omit letters but keep colour, and inspection/legend retain the identifier. Each group keeps its series even at zero. The plot distinguishes trajectories with colour and dash pattern, labels final group counts, and has accessible text for every retained sample. There is no inferred event log. A full 128-point buffer discards old observations and says so; gaps remain unconnected. Reconnecting to the same experiment preserves page-local history; a new run clears it.
+
+**Lifecycle:** the Rust process owns one experiment. Refreshing, closing, hiding or disconnecting a page neither pauses, resets nor stops it. A new page reads the current/final cache; its plot starts with the first sample actually received. Stop the server with **Ctrl+C in its terminal**. In-flight connections have a three-second deadline; shutdown then stops/joins the worker and collector. To repeat an experiment, restart the executable; retained pages recognise the new run automatically. There is no reset endpoint or persistence.
 
 A different run clears page-local history, selection and outstanding control state, with a visible new-experiment notice. The page follows the new run's actual status without resuming, stepping or retrying old commands. Reconnecting to the same run retains its history. Reload the page after changing browser assets to load the newly compiled version.
 
@@ -30,7 +44,7 @@ A different run clears page-local history, selection and outstanding control sta
 
 Start with [MODEL.md](../MODEL.md) and its worked five-tick example, then read:
 
-1. [src/demo.rs](../src/demo.rs): initial agents and scripted proposals, separate from transition logic.
+1. [src/experiment.rs](../src/experiment.rs): exact initial quotas, seeded shuffle and weighted autonomous choices from a read-only starting world. [src/launch.rs](../src/launch.rs) validates shared CLI options; [src/demo.rs](../src/demo.rs) preserves scripted proposals.
 2. [src/engine.rs](../src/engine.rs), `World::step`: validate against the starting grid, resolve occupied/conflicting claims to waits, check counter/ID capacity, build the next grid and swap buffers. Creation IDs follow creators' starting squares in row-major order.
 3. [src/runner.rs](../src/runner.rs): a standard thread owns the world, applies commands between ticks and publishes sampled snapshots. [src/bin/headless.rs](../src/bin/headless.rs) runs it without observation.
 4. [src/web.rs](../src/web.rs) and [src/bin/web.rs](../src/bin/web.rs): cache snapshots, serve embedded assets/JSON, bind loopback and handle shutdown. [web/app.js](../web/app.js) polls and sends controls; [web/display.js](../web/display.js) draws and inspects. JavaScript never computes transitions.
@@ -46,7 +60,7 @@ A channel is a bounded mailbox between threads. A receipt means the worker proce
 
 The runner retains one queued snapshot and at most one replaceable pending snapshot. It uses `try_send`, not a blocking send, at sampling/control/completion boundaries. A collector retains the latest cache independently of any browser. HTTP handlers copy that cache before serialization or network I/O; reads never ask the engine to advance or produce a frame. There are at most 16 concurrent connections and one outstanding browser snapshot read.
 
-The page keeps at most 128 `(tick, count)` points, labels observed ticks and sampling gaps, and does not join lines across gaps. Accepted-event totals come from transitions, not frame differences. Observation changes overhead, not fixed-tick outcomes; neither a throughput guarantee nor a complete event log/replay is implied.
+The page keeps at most 128 `(tick, total, per-group counts)` points, labels observed ticks and sampling gaps, and does not join lines across gaps. Accepted-event totals come from transitions, not frame differences. Observation changes overhead, not fixed-tick outcomes; neither a throughput guarantee nor a complete event log/replay is implied.
 
 | Request | Meaning |
 |---|---|
@@ -54,7 +68,7 @@ The page keeps at most 128 `(tick, count)` points, labels observed ticks and sam
 | `GET /api/snapshot` | Latest cached state; never advances the world |
 | `POST /api/control` | JSON `{"command":"pause"}`, `{"command":"resume"}` or `{"command":"step"}`; wait briefly for an applied receipt |
 
-Snapshot IDs, values, ticks, counts and event totals are decimal **strings**, preserving every bit of `u64`/`i64`, including values outside JavaScript's safe-number range. Grid dimensions are small numbers. JavaScript uses `BigInt` for tick comparisons; only approximate plot coordinates become `Number`.
+Snapshot IDs, values, seeds, ticks, counts, proportions and event totals are decimal **strings**, preserving every bit of `u64`/`i64`, including values outside JavaScript's safe-number range. Grid dimensions, group indices and u32 weights are JSON numbers. Autonomous snapshots also include `end_tick`, per-cell weights/group and an `experiment` record with the seed, generator/protocol, crate version, effective occupancy and canonical groups (weights, combined ratio, initial and current counts). Demo cell records retain ID/value. JavaScript uses `BigInt` for tick comparisons; only approximate plot coordinates become `Number`.
 
 An applied control returns `{"applied":true,"tick":"1","status":"paused",...}`. Single-step advances exactly once while paused, never beyond completion. A non-applicable/completed/stopped request returns 409; a full 16-command queue returns 503. Unknown/duplicate fields, malformed JSON, invalid commands, oversized bodies and unsupported content types are rejected. A 504 receipt timeout or lost response means the outcome is unknown: inspect the current tick before another command. **The browser never automatically retries controls.**
 
@@ -102,13 +116,13 @@ The workflow covers Linux quality checks, Linux/Windows Rust tests and builds, L
 
 Keep tested commit/run links and execution results in the relevant PR. CI success, source review, visual inspection and Pierre's acceptance are distinct. The preserved [paused](../docs/screenshots/paused.png), [completed](../docs/screenshots/completed.png), [sampled gaps](../docs/screenshots/sampled-gaps.png) and [narrow layout](../docs/screenshots/narrow-paused.png) screenshots are historical browser-parity evidence, not automatically updated visual baselines.
 
-Firefox/WebKit, macOS, manual keyboard/assistive-technology behaviour and throughput remain unverified.
+WebKit, macOS, manual keyboard/assistive-technology behaviour and throughput remain unverified. Firefox is an optional focused check when installed; required CI remains Chromium on Linux and Windows.
 
 ## Implementation limits
 
-Agents have only an ID and integer value. There are no autonomous rules, simulation randomness, automatic expiry, resource classes, generic property framework, world editing, persistence, replay, exports, WebAssembly engine, cloud deployment or analysis framework. Multiple occupancy, variable sizes and continuous space remain possible future decisions, not implemented abstractions.
+Agents have stable IDs and fixed weight tuples; the scripted fixture additionally uses an integer value. Autonomous choices and seeded initialization are implemented; there is no ageing, resource layer, mutation, generic property framework, world editing, persistence, replay, exports, WebAssembly engine, cloud deployment or analysis framework. Multiple occupancy, variable sizes and continuous space remain possible future decisions, not implemented abstractions.
 
-Linear actor lookup costs O(grid squares × proposals), plus O(grid squares) passes. This is a tiny-fixture simplicity trade-off, not a scaling claim; measure a real experimental workload before optimising. Page history and selection are lost on refresh, multiple pages share one experiment/control surface, and abrupt process termination loses the run. A new run deliberately discards the old page-local observations; they are not saved.
+Actor lookup uses an ordinary ID-to-starting-square hash map. The map is only queried, never iterated to decide outcomes; the engine performs O(grid squares + proposals) expected work, preserving row-major decisions and creation IDs. Group counting costs O(occupied squares × configured groups), with at most eight groups. This is not a throughput guarantee. Page history and selection are lost on refresh, multiple pages share one experiment/control surface, and abrupt process termination loses the run. A new run deliberately discards the old page-local observations; they are not saved.
 
 ## Historical references
 

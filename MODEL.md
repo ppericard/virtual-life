@@ -1,6 +1,6 @@
 # VirtualLife — model and examples
 
-**Model status:** the implemented rules below describe the deterministic technical fixture, not an approved autonomous research model or evidence of emergence. The browser is the selected interface. See [README](README.md) for the project overview and run instructions, and [the development reference](docs/development.md#verification) for checks; this document records rules, their rationale and open model choices.
+**Model status:** Option A is the approved first autonomous experiment. Four default property bundles drive random individual choices; the scripted fixture remains regression coverage. Neither is evidence of biological realism or emergence. The browser is the selected interface. See [README](README.md) for the project overview and run instructions, and [the development reference](docs/development.md#verification) for checks; this document records rules, their rationale and open model choices.
 
 ## Confirmed starting constraints
 
@@ -8,9 +8,9 @@ An agent represents an individual with identity, properties, and state. Resource
 
 The world is a discrete rectangular 2D grid with wraparound edges and eight immediate neighboring squares. Each square holds at most one agent. Agents are treated at roughly the same spatial scale; mixed microscopic/macroscopic sizes, overlap, multiple occupancy, and containment are out of scope initially. Keep those future possibilities open without implementing layers or spatial frameworks now.
 
-Updates are synchronous: decisions consult the unchanged starting state; each starting agent acts at most once; a new agent first acts on the following tick. Creation, removal, and property changes belong early. An agent already meeting a removal condition must not act before removal; the actual autonomous condition is not defined yet.
+Updates are synchronous: decisions consult the unchanged starting state; each starting agent acts at most once; a new agent first acts on the following tick. Creation, removal, and property changes belong early. An agent already meeting a removal condition must not act before removal; Option A random removal is the individual's sole chosen action that tick.
 
-The engine must run without a viewer. With the same initial state, rules, and number of ticks, observation alone must not change the resulting world. Future randomness must have explicit reproducibility settings; do not promise cross-version identity from a seed alone. User interventions are different from observation and must be applied between ticks.
+The engine must run without a viewer. With the same initial state, rules, and number of ticks, observation alone must not change the resulting world. Randomness has explicit reproducibility settings; do not promise cross-version identity from a seed alone. User interventions are different from observation and must be applied between ticks.
 
 ## Task 01 fixture: a trustworthy live grid
 
@@ -58,11 +58,11 @@ The viewer ends at tick 5. A headless request for more than five ticks uses miss
 
 ## Observation and controls
 
-The live tool receives immutable, tick-stamped samples without blocking simulation on rendering. Show the grid, inspection of an agent's ID/value, counts, accepted-event totals, and a bounded count-versus-tick plot. Mark sampling gaps; missing samples are not missing simulation steps. Paused and completed runs must make the actual final state available. Headless and observed runs use the same transitions.
+The live tool receives immutable, tick-stamped samples without blocking simulation on rendering. Show the grid, inspection of an agent's ID/properties/position (fixture value in demo mode), counts, accepted-event totals, and bounded population-versus-tick plots. Mark sampling gaps; missing samples are not missing simulation steps. Paused and completed runs must make the actual final state available. Headless and observed runs use the same transitions.
 
 Pause/resume and single-step act between ticks. Start paused; single-step advances exactly once only while paused, and cannot succeed beyond the finite end. Queued commands are distinguished from worker-applied actions by receipts. Completed state remains readable; stopped/failed or disconnected states are visible. A lost non-idempotent control response is not automatically retried.
 
-The native process owns the experiment. Refreshing, closing, hiding, or disconnecting the browser does not pause, reset, or terminate it. A new page reconnects to its current/final snapshot; page-local plot history starts there without fabricating earlier samples. Ctrl+C explicitly shuts down the server and cleanly stops/joins the worker. Restarting the process starts a new fixture. Speed limiting belongs in the runner, not the transition. State editing and modest exports follow early but are outside Tasks 01–02. Record future edits with their applied tick. Lossy live observation is not a complete recording or replay system.
+The native process owns the experiment. Refreshing, closing, hiding, or disconnecting the browser does not pause, reset, or terminate it. A new page reconnects to its current/final snapshot; page-local plot history starts there without fabricating earlier samples. Ctrl+C explicitly shuts down the server and cleanly stops/joins the worker. Restarting the process starts a new experiment. Speed limiting belongs in the runner, not the transition. State editing and modest exports follow early but are outside Tasks 01–02. Record future edits with their applied tick. Lossy live observation is not a complete recording or replay system.
 
 **9 September 2026 — restart recovery (Pierre's decision):** when a retained page detects a different server run, it clears the previous run's page-local history, selection and pending control state, displays a new-experiment notice, and follows the new run's actual state. It does not resume, step or retry commands automatically. Same-run reconnect retains history. Delayed old-run control requests are rejected and old replies cannot change the new page state. Run identity belongs to the HTTP adapter, not simulation state or model randomness.
 
@@ -74,15 +74,36 @@ The native process owns the experiment. Refreshing, closing, hiding, or disconne
 
 **6 September 2026 — browser interface (Pierre's decision):** replace the native window with a small local browser observer/control surface, retaining the native Rust engine and headless execution. Observation is bounded and independent of rendering. Browser lifetime no longer owns worker lifetime. This changes application lifecycle, not transition rules or the scripted table.
 
-**Still open:** the first autonomous properties and decision procedure, local interaction, creation/removal conditions, and any conservation or transfer rules. Do not silently restore the old lifetime distribution, introduce a resource economy, or rename hardcoded biological behavior to make it seem neutral. Scripted tests establish implementation behavior, not emergence. Choose the first autonomous rule set with Pierre after reviewing the live demonstrator.
+**9 September 2026 — Option A (Pierre's decision):** implement the four-property-group autonomous experiment below. This supersedes issue #8's earlier identical-properties proposal and awaiting-model-choice wording. Neighbour-dependent behaviour is the immediate follow-up, but its rules require Pierre's next decision.
 
-## Preparing the first autonomous experiment
+## Option A: shared properties, autonomous choices
 
-Choose one small experiment with Pierre before implementing new rules. These are discussion prompts, not selected behaviour or a new specification template:
+A species is the exact tuple of four nonnegative integer weights: **wait, move, copy, remove**. At least one weight must be positive. Individuals with identical tuples belong to one group, regardless of labels, IDs, positions or ancestry. `(1,1,0,0)` and `(2,2,0,0)` are distinct bundles despite having equal action probabilities; grouping compares actual properties, not normalized probabilities. Labels A–D, colours and symbols are presentation only. The implementation supports one to eight distinct bundles; four is the default experiment, not four action implementations.
 
-- What question should the experiment make observable, and what initial arrangement will help investigate it?
-- What named properties does an individual carry, what local information can it read, and how does it choose its action?
-- When can creation or removal happen? Are any quantities transferred or conserved, and how are incompatible proposals resolved? Do not assume the fixture's action vocabulary already supports joint interactions.
-- What should a few worked ticks do, what invariants must always hold, and what behaviour remains genuinely open? If randomness is chosen, specify reproducibility inputs as well.
+Each starting individual uses the same procedure. Imagine numbered tickets in four adjacent piles: a `(4,5,1,1)` individual has 4 wait tickets, 5 move tickets, 1 copy ticket and 1 remove ticket. Draw one of the 11 tickets uniformly. A zero-weight action has no tickets and cannot be chosen. A move/copy draws one of **all eight neighbours**, uniformly, without checking occupancy first. Wait/removal draws no destination. The selected action becomes an ordinary proposal; the existing engine resolves the full batch against the unchanged starting grid.
 
-Record the agreed rules and rationale here, then implement one bounded headless-and-observable increment with matching tests. Keep the scripted fixture as regression coverage. The walkthrough should let Pierre follow one individual's decision, predict a small example and find its Rust implementation. Understanding the algorithm and investigating the question are useful outcomes; spectacular emergence is not a release gate. No new autonomous rule is selected by this preparation.
+For example, a move from group A and a copy from group B both targeting a start-empty square both fail. They do not choose another target. If a third individual removes itself, its old square still cannot receive a move/copy in that tick. A successful copy retains the parent's complete weight tuple, receives a fresh ID in creator row-major order, and first draws an action next tick. Movement preserves ID and properties. Weights remain fixed throughout life; the fixture-only integer value is unused by autonomous choices and is not a species property.
+
+Removal is a random selected action, **not ageing or an inactivity penalty**. No mutation, energy, resources, neighbour-property-dependent choices, global population control, balancing, automatic reseeding or guaranteed coexistence are implemented. Any or all groups can become extinct. Every configured group remains in the legend and population observations at zero. The finite tick limit ends a run even when it is already empty; extinction does not trigger a special transition.
+
+### Illustrative initial settings
+
+The default autonomous world is 32 × 24, occupancy 0.3, four equal initial proportions, seed 1 and 500 ticks. Default bundles are A `(4,5,1,1)`, B `(4,3,2,1)`, C `(6,2,1,1)` and D `(2,6,2,1)`. These are adjustable experimental settings, **not scientifically calibrated values**. They illustrate different tendencies; no hidden mechanism tunes a winner or maintains coexistence.
+
+Occupancy specifies an **exact total**, rounded down: `floor(width × height × occupancy)`. For 768 squares and 0.3, place 230 agents. Initial proportions are nonnegative integer ratios. First combine proportions of identical bundles in first-appearance order. Allocate each group's exact quota by rounding down, then give the leftover individuals to the largest fractional remainders, breaking ties by that canonical group order. Equal ratios therefore yield 58, 58, 57, 57 agents. Zero ratios produce zero initial agents and remain visible; the total ratio must be positive even on an empty grid. The actual canonical groups, ratios and initial counts are recorded in browser and headless output.
+
+Shuffle all row-major square indices with descending Fisher–Yates; assign successive shuffled slots to the groups' exact quotas, then assign starting IDs 1, 2, … in occupied row-major order. This produces random placement without overlaps, including exact empty/full grids. Dimensions are at least 3 in each direction and at most 262,144 squares for bounded local allocations. Occupancy accepts up to six decimal places from 0 through 1. Each weight/ratio is a `u32`; totals and quota arithmetic use wider integers.
+
+### Reproducibility contract
+
+The generator is **SplitMix64**, using [Vigna's public-domain 2015 reference](https://prng.di.unimi.it/splitmix64.c), with the explicit `VirtualLife sampling v1` draw protocol in `src/experiment.rs`. Seed is the initial unsigned 64-bit state. Each raw draw adds `0x9e3779b97f4a7c15` with wrapping arithmetic, then mixes with shifts 30/27/31 and multipliers `0xbf58476d1ce4e5b9` and `0x94d049bb133111eb`. Reference output vectors are tested. This generator is for reproducible experiments, not security.
+
+To draw uniformly below N, discard raw values below `(-N modulo 2^64) modulo N`, then return the accepted value modulo N. Rejected raw values advance the generator. This avoids remainder bias. Initialization draws once per Fisher–Yates iteration (plus any rejected raw values), from the last square through index 1, even for an empty population. Quota calculation and ID allocation consume no randomness. The same generator then continues into ticks. Iterate occupied starting squares in row-major order: draw one weighted action per individual, then draw a destination only for move/copy. Neighbours have the stable order northwest, north, northeast, west, east, southwest, south, southeast, with wraparound. Failed destinations never retry and still consume their original draws. Newborns enter only the next tick's iteration.
+
+Record the seed, effective configuration, generator/protocol name and crate version with results; keep the source commit/Cargo.lock for exact reproduction. The same configuration and code produces the same fixed-tick world and accepted-event totals with observation disabled, enabled, saturated, disconnected or sampled differently. Rendering, pacing and the HTTP adapter's OS-random run identity consume no simulation draws. A seed alone does not promise identical outcomes across arbitrary code or dependency changes. Live samples are bounded and incomplete, not a saved trajectory.
+
+### Immediate model checkpoint: local neighbours
+
+Action selection is a separate function receiving the read-only starting `World`; it can already read each individual's position and the eight neighbours' actual properties through `neighbors` and `agent_at`. Transition resolution and presentation do not need duplicate implementations. No neighbourhood framework or interaction matrix is introduced.
+
+A small next proposal for Pierre is **crowding-sensitive copy selection**: after an individual draws Copy, let it wait instead when all eight starting neighbours are occupied. This makes local information explicit without changing successful outcomes, but changes destination draw consumption and therefore later random trajectories; it also adds little observable behaviour because the engine already rejects occupied targets. A more informative alternative is to scale copy tendency with the number of empty neighbours before drawing the action; that changes copy probabilities and population dynamics and needs an explicit formula and worked examples. Neither rule is selected or implemented. Choose the question and exact rule before that next increment.

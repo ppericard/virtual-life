@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { HISTORY_LIMIT, recordSample, sampleDescription, inspectionText } from '../web/display.js';
+import { HISTORY_LIMIT, recordSample, sampleDescription, inspectionText, groupColor, groupLabel } from '../web/display.js';
 
 test('history stays bounded, deduplicates ticks, and does not fabricate missed samples', () => {
   const points=[];
@@ -12,6 +12,17 @@ test('history stays bounded, deduplicates ticks, and does not fabricate missed s
   assert.equal(points.length,HISTORY_LIMIT); assert.equal(points.at(-1).count,'4');
   recordSample(points,{tick:'0',count:'3'}); assert.equal(points.at(-1).tick,'598');
   assert.match(sampleDescription(points),/127 sampling gaps/);
+});
+
+test('species history keeps extinct zeros, bounded exact samples and stable identifiers', () => {
+  const points=[];
+  for(let tick=0;tick<300;tick++) recordSample(points,{tick:String(tick),count:'4',experiment:{groups:[{count:'0'},{count:'4'},{count:'0'},{count:'0'}]}});
+  assert.equal(points.length,HISTORY_LIMIT); assert.deepEqual(points.at(-1).groups,['0','4','0','0']);
+  assert.match(sampleDescription(points),/older points are discarded/); assert.match(sampleDescription(points),/not a complete recording/);
+  assert.equal(new Set(Array.from({length:8},(_,i)=>groupColor(i))).size,8);
+  assert.deepEqual([0,1,2,3].map(groupLabel),['A','B','C','D']);
+  const sample={width:8,tick:'7',experiment:{},cells:[{id:'9007199254740993',group:2,weights:[6,2,1,1]}]};
+  assert.equal(inspectionText(sample,'9007199254740993'),'ID 9007199254740993 · Group C · Weights (wait, move, copy, remove): 6, 2, 1, 1 · Position (0, 0)');
 });
 test('large adjacent ticks remain adjacent and signed values remain exact', () => {
   const points=[];

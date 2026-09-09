@@ -37,3 +37,43 @@ fn invalid_headless_arguments_fail_with_a_message() {
         assert!(!output.stderr.is_empty());
     }
 }
+
+#[test]
+fn autonomous_cli_records_reproducible_effective_settings_and_final_population() {
+    let arguments = [
+        "--mode",
+        "autonomous",
+        "--width",
+        "8",
+        "--height",
+        "6",
+        "--seed",
+        "1",
+        "--ticks",
+        "10",
+    ];
+    let first = Command::new(env!("CARGO_BIN_EXE_headless"))
+        .args(arguments)
+        .output()
+        .unwrap();
+    let repeated = Command::new(env!("CARGO_BIN_EXE_headless"))
+        .args(arguments)
+        .output()
+        .unwrap();
+    assert!(first.status.success() && repeated.status.success());
+    assert_eq!(first.stdout, repeated.stdout);
+    let text = String::from_utf8(first.stdout).unwrap();
+    for expected in [
+        "seed=1 generator=SplitMix64 / VirtualLife sampling v1",
+        "width=8 height=6 occupancy=0.300000 ticks=10 initial_count=14",
+        "group=0 weights=[4, 5, 1, 1] proportion=1 initial_count=4",
+        "tick=10 count=9",
+        "moves=28 creations=7 removals=12 value_changes=0",
+        "group=0 count=2",
+        "group=1 count=6",
+        "group=2 count=0",
+        "group=3 count=1",
+    ] {
+        assert!(text.contains(expected), "missing {expected} in {text}");
+    }
+}
