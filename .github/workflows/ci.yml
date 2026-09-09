@@ -65,8 +65,16 @@ jobs:
         run: cargo build --locked --features web --bin web
 
   browser:
-    name: Browser (Linux Chromium)
-    runs-on: ubuntu-24.04
+    name: Browser (${{ matrix.name }} Chromium)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-24.04
+          - name: Windows
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -84,7 +92,7 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ !cancelled() }}
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.name }}
           path: |
             playwright-report/
             test-results/

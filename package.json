@@ -3,8 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check web/app.js && node --check web/display.js && node --check playwright.config.js && node --check tests/browser/fixtures.js && node --check tests/browser/viewer.spec.js && node --test tests/display.test.js",
+    "check": "node --check web/app.js && node --check web/display.js && node --check playwright.config.js && node --check tests/browser/fixtures.js && node --check tests/browser/viewer.spec.js && node --check tests/browser/shutdown.spec.js && node --test tests/display.test.js",
     "test:e2e": "cargo build --locked --features web --bin web && playwright test"
   },
-  "devDependencies": { "@playwright/test": "1.63.0" }
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "node-pty": "1.1.0"
+  }
 }
