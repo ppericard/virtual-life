@@ -121,6 +121,16 @@ function render() {
 }
 
 function receiveRun(next, nextRun) {
+  if (!next.experiment) {
+    // Reconcile availability before syncPresets removes a focused old button
+    // or render hides the restart controls and their workspace trigger.
+    const panel = byId('new-experiment-panel');
+    // Disconnecting can already have blurred a disabled seed/preset to body.
+    const restoreFocus = panel.contains(document.activeElement) || document.activeElement === byId('new-experiment-toggle')
+      || !panel.hidden && document.activeElement === document.body;
+    if (!panel.hidden) showPanel('new-experiment', false, false);
+    if (restoreFocus) byId('inspect-toggle').focus({preventScroll: true});
+  }
   if (nextRun !== runId) {
     if (runId !== null) {
       history.length = 0;

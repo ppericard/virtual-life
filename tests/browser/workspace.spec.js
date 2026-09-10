@@ -155,6 +155,60 @@ test('narrow panel switches and desktop resizing keep requested controls reachab
   expect(await (await page.request.get(`${server.url}/api/snapshot`)).json()).toEqual(before);
 });
 
+for (const width of [1280,390]) {
+  test(`mode changes reconcile unavailable panels and visible focus at ${width}px`, async ({page,context,server},info) => {
+    await page.setViewportSize({width,height:844});
+    await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
+    const initial = await (await page.request.get(`${server.url}/api/snapshot`)).json();
+    const panel = page.locator('#new-experiment-panel'), toggle = page.locator('#new-experiment-toggle');
+    let posts = 0; page.on('request', request => { if (request.method() === 'POST') posts++; });
+    // Cover a retained input, a preset removed during run reconciliation, the
+    // disappearing trigger, and unrelated focus that must not be stolen.
+    for (const focused of ['#seed','[data-preset="lower-copying"]','#new-experiment-toggle','#details-toggle']) {
+      await openPanel(page,'New experiment');
+      await page.getByRole('button',{name:'Lower copying',exact:true}).click();
+      await page.locator('#seed').fill('42');
+      await page.locator(focused).focus();
+      const previousRun = (await page.request.get(`${server.url}/api/snapshot`)).headers()['x-virtuallife-run'];
+      if (focused === '#seed') {
+        // Exercise focus already lost when disconnection disables the input.
+        await context.setOffline(true); await expect(page.locator('#connection')).toBeVisible();
+      }
+      await server.restart(['--mode','demo']);
+      await context.setOffline(false);
+      await expect(toggle).toBeHidden();
+      await expect(page.locator('#count')).toHaveText('3');
+      await expect(page.locator('#run-message')).toContainText('New experiment connected');
+      await expect(panel).toBeHidden();
+      await expect(toggle).toHaveAttribute('aria-expanded','false');
+      await expect(page.locator('#restart-controls')).toBeHidden();
+      const focus = page.locator(focused === '#details-toggle' ? focused : '#inspect-toggle');
+      await expect(focus).toBeVisible(); await expect(focus).toBeFocused();
+      await expect(page.locator('#agent')).toHaveValue('');
+      await expect(page.locator('#samples')).toContainText('Tick 0 · 1 sample');
+      const demo = await page.request.get(`${server.url}/api/snapshot`);
+      expect(demo.headers()['x-virtuallife-run']).not.toBe(previousRun);
+      expect((await demo.json()).experiment).toBeNull();
+      if (focused === '#seed') await save(page,info,`mode-change-${width}`);
+      await server.restart(); // Return to the fixture's original autonomous settings.
+      await expect(toggle).toBeVisible();
+      await expect(page.locator('#count')).toHaveText(initial.count);
+      await expect(panel).toBeHidden();
+      await expect(toggle).toHaveAttribute('aria-expanded','false');
+      await expect(focus).toBeFocused();
+      await openPanel(page,'New experiment');
+      await expect(page.locator('#seed')).toHaveValue('1');
+      await expect(page.locator('#next-preset')).toContainText('Original');
+      await page.locator('#restart-seed').click({trial:true});
+      await page.locator('#restart-random').click({trial:true});
+      await page.getByRole('button',{name:'Close New experiment',exact:true}).click();
+      await expect(toggle).toBeVisible(); await expect(toggle).toBeFocused();
+      expect(await (await page.request.get(`${server.url}/api/snapshot`)).json()).toEqual(initial);
+    }
+    expect(posts).toBe(0);
+  });
+}
+
 test.describe('hidden observation with eight property groups',()=>{
   test.use({serverArgs:['--mode','autonomous','--width','5','--height','5','--occupancy','1','--bundles','1,0,0,0;2,0,0,0;3,0,0,0;4,0,0,0;5,0,0,0;6,0,0,0;7,0,0,0;8,0,0,0','--proportions','1,1,1,1,1,1,1,0','--upkeep','0','--crowding-upkeep','0','--ticks','136','--tick-ms','0']});
   test('closed analysis retains bounded history and reopens while paused or offline',async({page,context,server},info)=>{

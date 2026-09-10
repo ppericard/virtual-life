@@ -33,10 +33,10 @@ export const test = base.extend({
   serverArgs: [[], { option: true }],
   server: async ({ serverArgs }, use, testInfo) => {
     let logs = '';
-    async function start(port) {
+    async function start(port, args = serverArgs) {
       let runLogs = '';
       let reportOutput = () => {};
-      const child = await spawnServer(path.resolve('target/debug', process.platform === 'win32' ? 'web.exe' : 'web'), ['--port', String(port), ...serverArgs], data => {
+      const child = await spawnServer(path.resolve('target/debug', process.platform === 'win32' ? 'web.exe' : 'web'), ['--port', String(port), ...args], data => {
         logs += data;
         runLogs += data;
         reportOutput();
@@ -76,10 +76,10 @@ export const test = base.extend({
       await use({
         url,
         stop: () => run.stop(),
-        restart: async () => {
+        restart: async (args = serverArgs) => {
           // Real process replacement at the same origin, never an API reset.
           await run.stop();
-          run = await start(new URL(url).port);
+          run = await start(new URL(url).port, args);
           expect(await run.ready).toBe(url);
         },
       });
