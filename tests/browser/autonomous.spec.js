@@ -15,6 +15,7 @@ test.describe('wear and repair default experiment', () => {
     await expect(page.locator('#action-order')).toHaveText('Wait / move / copy / repair');
     await expect(page.locator('#configuration')).toContainText('Maximum, initial and newborn integrity 10');
     await expect(page.locator('#configuration')).toContainText('wear-repair crowding v2');
+    await expect(page.locator('#configuration')).toContainText('Replaying wear-repair v1 results requires its earlier code.');
     await expect(page.locator('#choice-rule')).toContainText('Copy chance is scaled by the fraction of empty neighbours');
     let previous=await snapshot(page,server);
     expect(previous.experiment.survival).toBe('wear-repair');
@@ -110,6 +111,7 @@ test.describe('autonomous visual experiment', () => {
     await expect(page.locator('#dimensions')).toContainText('8 × 6');
     await expect(page.locator('#configuration')).toContainText('Seed 1 · SplitMix64 / VirtualLife sampling v1');
     await expect(page.locator('#configuration')).toContainText('random v1');
+    await expect(page.locator('#configuration')).not.toContainText('Replaying wear-repair v1');
     await expect(page.locator('#choice-rule')).toBeHidden();
     await expect(page.locator('#legend .group-row')).toHaveCount(4);
     const initial = await snapshot(page,server);

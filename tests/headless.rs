@@ -27,6 +27,10 @@ fn repair_only_population_maintains_integrity_in_the_default_experiment() {
     assert!(text.contains("repairs=18 failures=0"), "{text}");
     assert!(text.contains("integrity=10/10"), "{text}");
     assert!(text.contains("protocol=wear-repair crowding v2"), "{text}");
+    assert!(
+        text.contains("Replaying wear-repair v1 results requires its earlier code."),
+        "{text}"
+    );
 }
 
 #[test]
@@ -38,6 +42,7 @@ fn supported_headless_commands_report_the_fixture_and_extra_wait_ticks() {
             .unwrap();
         assert!(output.status.success());
         let text = String::from_utf8(output.stdout).unwrap();
+        assert!(!text.contains("Replaying wear-repair v1"), "{text}");
         assert!(text.contains(&format!("tick={ticks} count={count}")));
         if ticks >= 5 {
             assert!(text.contains("moves=2 creations=2 removals=3 value_changes=2"));
@@ -94,6 +99,7 @@ fn autonomous_cli_records_reproducible_effective_settings_and_final_population()
     assert!(first.status.success() && repeated.status.success());
     assert_eq!(first.stdout, repeated.stdout);
     let text = String::from_utf8(first.stdout).unwrap();
+    assert!(!text.contains("Replaying wear-repair v1"), "{text}");
     for expected in [
         "seed=1 generator=SplitMix64 / VirtualLife sampling v1",
         "protocol=random v1",

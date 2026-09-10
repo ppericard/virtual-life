@@ -49,8 +49,9 @@ export function renderExperiment(sample) {
   const info = sample.experiment;
   document.getElementById('action-order').textContent = `Wait / move / copy / ${info.maintenance ? 'repair' : 'remove'}`;
   const rules = info.maintenance;
+  const compatibility = rules ? ' (Replaying wear-repair v1 results requires its earlier code.)' : '';
   const maintenance = rules ? ` Maximum, initial and newborn integrity ${rules.maximum}; upkeep ${rules.upkeep}; extra move/copy wear ${rules.move_wear}/${rules.copy_wear}; gross repair ${rules.repair}. Repair costs the action opportunity. Failed spatial attempts pay wear.` : ' Random removal comparison; no integrity.';
-  document.getElementById('configuration').textContent = `Seed ${info.seed} · ${info.generator} · crate ${info.version} · ${info.protocol} · occupancy ${info.occupancy} (rounded down to an exact count) · ${sample.end_tick} ticks.${maintenance} Illustrative settings, not calibrated biology.`;
+  document.getElementById('configuration').textContent = `Seed ${info.seed} · ${info.generator} · crate ${info.version} · ${info.protocol}${compatibility} · occupancy ${info.occupancy} (rounded down to an exact count) · ${sample.end_tick} ticks.${maintenance} Illustrative settings, not calibrated biology.`;
   if (rules) {
     const history = sample.failure_history;
     document.getElementById('failure-summary').textContent = `${sample.totals.failures} cumulative failures. ${history.records.length} retained engine records (latest ${history.limit}); ${history.discarded} older records discarded. Recorded on every tick, independently of plot sampling.${history.records.length ? '' : ' No failures recorded yet.'}`;

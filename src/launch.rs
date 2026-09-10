@@ -198,6 +198,7 @@ pub fn describe(config: &Config) -> Result<(), String> {
             }
         );
         if let Some(rules) = experiment.maintenance {
+            println!("Replaying wear-repair v1 results requires its earlier code.");
             println!(
                 "integrity={} upkeep={} move_wear={} copy_wear={} repair={}; initial and newborn integrity use the maximum",
                 rules.maximum, rules.upkeep, rules.move_wear, rules.copy_wear, rules.repair
