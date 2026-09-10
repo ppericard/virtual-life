@@ -8,6 +8,39 @@ async function save(page, info, name) {
   await info.attach(name,{path:file,contentType:'image/png'});
 }
 
+test.describe('stored selected action inspection', () => {
+  test.use({serverArgs:['--mode','autonomous','--width','3','--height','3','--occupancy','1','--bundles','0,1,0,0','--proportions','1','--ticks','2']});
+  test('a rejected Move remains selected while the individual stays in place', async ({page,server},info) => {
+    await page.goto(server.url);
+    await expect(page.locator('#tick')).toHaveText('0');
+    const initial=await snapshot(page,server);
+    expect(initial.cells.every(a=>a.last_action===null)).toBe(true);
+    await page.locator('#agent').selectOption('1');
+    await expect(page.locator('#inspection')).toContainText('Last selected action: Not yet acted');
+    await save(page,info,'action-state-initial');
+    await page.locator('#step').click();
+    await expect(page.locator('#tick')).toHaveText('1');
+    const selected=await snapshot(page,server);
+    expect(selected.cells.map(a=>a.id)).toEqual(initial.cells.map(a=>a.id));
+    expect(selected.cells.every(a=>a.last_action==='Move'&&a.integrity===7)).toBe(true);
+    expect(selected.totals.moves).toBe('0');
+    await expect(page.locator('#inspection')).toContainText('Position (0, 0) · Integrity 7/10');
+    await expect(page.locator('#inspection')).toContainText('Last selected action: Move (success not implied)');
+    await save(page,info,'action-state-rejected-move');
+    await page.setViewportSize({width:390,height:950});
+    await expect(page.locator('#inspection')).toBeVisible();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+    await save(page,info,'action-state-narrow');
+    await page.locator('#step').click();
+    await expect(page.getByRole('status')).toHaveText('completed');
+    await page.reload();
+    await expect(page.locator('#tick')).toHaveText('2');
+    await page.locator('#agent').selectOption('1');
+    await expect(page.locator('#inspection')).toContainText('Last selected action: Move (success not implied)');
+    expect((await snapshot(page,server)).totals.moves).toBe('0');
+  });
+});
+
 test.describe('wear and repair default experiment', () => {
   test.use({serverArgs:['--mode','autonomous','--width','8','--height','6','--ticks','80','--tick-ms','0']});
   test('live integrity recovers, properties remain stable and completion keeps failure evidence', async ({page,server},info) => {
@@ -42,7 +75,7 @@ test.describe('wear and repair default experiment', () => {
     expect(recovered).toBe(true); expect(Number(previous.totals.repairs)).toBeGreaterThan(0);
     expect(previous.experiment.groups.map(g=>g.count)).toEqual(['1','9','4','1']);
     await page.locator('#agent').selectOption('23');
-    await expect(page.locator('#inspection')).toHaveText('ID 23 · Group A · Base weights (wait, move, copy, repair): 2, 4, 1, 3 · Position (3, 0) · Integrity 7/10 · Current occupied neighbours 2/8 · Next-tick effective upkeep 1 (base 1 + crowding 0; displayed neighbourhood)');
+    await expect(page.locator('#inspection')).toHaveText('ID 23 · Group A · Base weights (wait, move, copy, repair): 2, 4, 1, 3 · Position (3, 0) · Integrity 7/10 · Current occupied neighbours 2/8 · Next-tick effective upkeep 1 (base 1 + crowding 0; displayed neighbourhood) · Last selected action: Move (success not implied)');
     await expect(page.locator('#plot')).toHaveAttribute('aria-label',/Tick 10: Group A 1, Group B 9, Group C 4, Group D 1; total 15/);
     await save(page,info,'wear-crowding-v3-tick10');
     await page.locator('#agent').selectOption('17');

@@ -10,6 +10,83 @@ use std::{
 use virtual_life::{runner::Config, web};
 const GUARD: Duration = Duration::from_secs(10);
 
+#[test]
+fn api_reports_selected_actions_and_unacted_children_without_implying_success() {
+    use virtual_life::{engine::Weights, experiment::ExperimentConfig};
+    for (weights, occupancy, selected) in [
+        ([1, 0, 0, 0], 1_000_000, "Wait"),
+        ([0, 1, 0, 0], 1_000_000, "Move"),
+        ([0, 0, 1, 0], 200_000, "Copy"),
+        ([0, 0, 0, 1], 1_000_000, "Repair"),
+    ] {
+        let server = Server::start(Config {
+            ticks: 1,
+            start_paused: true,
+            experiment: Some(ExperimentConfig {
+                width: 3,
+                height: 3,
+                occupancy,
+                bundles: vec![Weights(weights)],
+                proportions: vec![1],
+                ..Default::default()
+            }),
+            ..Config::default()
+        });
+        let initial = server.until("0", "paused");
+        let initial_ids: Vec<_> = initial["cells"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|a| !a.is_null())
+            .map(|a| {
+                assert!(a.as_object().unwrap().contains_key("last_action"));
+                assert!(a["last_action"].is_null());
+                a["id"].clone()
+            })
+            .collect();
+        assert_eq!(server.control("step").0, 200);
+        let final_sample = server.until("1", "completed");
+        assert_eq!(
+            final_sample["experiment"]["protocol"],
+            "wear-repair crowding v3"
+        );
+        for cell in final_sample["cells"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|a| !a.is_null())
+        {
+            if initial_ids.contains(&cell["id"]) {
+                assert_eq!(cell["last_action"], selected);
+            } else {
+                assert_eq!(selected, "Copy");
+                assert!(cell["last_action"].is_null());
+                assert_eq!(cell["integrity"], 10);
+            }
+        }
+        assert_eq!(final_sample["totals"]["moves"], "0"); // Full world's Moves are all rejected.
+        assert_eq!(
+            final_sample["totals"]["creations"],
+            if selected == "Copy" { "1" } else { "0" }
+        );
+    }
+    for experiment in [None, Some(ExperimentConfig::random())] {
+        let server = Server::start(Config {
+            ticks: 0,
+            experiment,
+            ..Config::default()
+        });
+        for cell in server.until("0", "completed")["cells"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|a| !a.is_null())
+        {
+            assert!(!cell.as_object().unwrap().contains_key("last_action"));
+        }
+    }
+}
+
 struct Server {
     address: SocketAddr,
     shutdown: Option<tokio::sync::oneshot::Sender<()>>,

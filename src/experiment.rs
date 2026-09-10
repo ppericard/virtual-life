@@ -1,5 +1,5 @@
 //! Reproducible initialisation and action choice. Resolution stays in World::step.
-use crate::engine::{Action, Agent, Maintenance, Position, Proposal, Weights, World};
+use crate::engine::{Action, ActionState, Agent, Maintenance, Position, Proposal, Weights, World};
 
 pub const GENERATOR: &str = "SplitMix64 / VirtualLife sampling v1";
 // Vigna's 2015 public-domain reference: https://prng.di.unimi.it/splitmix64.c
@@ -212,6 +212,7 @@ impl ExperimentConfig {
                         value: 0,
                         weights,
                         integrity: self.maintenance.map_or(0, |rules| rules.maximum),
+                        last_action: None,
                     },
                 )
             })
@@ -228,6 +229,27 @@ impl ExperimentConfig {
             },
         ))
     }
+}
+
+/// Shared wear-repair transition weights in Wait/Move/Copy/Repair order.
+/// State and positive integrity after mandatory upkeep are explicit inputs for
+/// later rules; neither changes the probabilities in this increment. Neighbours
+/// are immutable starting occupants, including individuals about to fail upkeep.
+/// Eightfold tickets preserve the v3 draw bound: at most 32 * u32::MAX in u64.
+pub fn transition_weights(
+    _current: Option<ActionState>,
+    properties: Weights,
+    _integrity_after_upkeep: u32,
+    neighbours: &[Option<Agent>; 8],
+) -> [u64; 4] {
+    let occupied = neighbours.iter().flatten().count() as u64;
+    let [wait, movement, copy, repair] = properties.0.map(u64::from);
+    [
+        8 * wait + occupied * copy,
+        8 * movement,
+        (8 - occupied) * copy,
+        8 * repair,
+    ]
 }
 
 /// Each starting individual chooses once in row-major order. Wear-repair reduces
@@ -254,19 +276,21 @@ pub fn proposals(world: &World, random: &mut Random) -> Vec<Proposal> {
             if upkeep.is_some_and(|cost| u64::from(agent.integrity) <= cost.effective_upkeep) {
                 return None; // Upkeep failure is resolved before action choice; no draw.
             }
-            let mut tickets = agent.weights.0.map(u64::from);
-            if let Some(cost) = upkeep {
-                let empty = 8 - u64::from(cost.occupied_neighbors);
-                let [wait, movement, copy, repair] = tickets;
-                // Eightfold tickets keep odd/fractional Copy shares exact. The
-                // total is 8 * sum(base weights), at most 32 * u32::MAX in u64.
-                tickets = [
-                    8 * wait + (8 - empty) * copy,
-                    8 * movement,
-                    empty * copy,
-                    8 * repair,
-                ];
-            }
+            let tickets = if let Some(cost) = upkeep {
+                let neighbours = world
+                    .neighbors(position)
+                    .unwrap()
+                    .map(|position| world.agent_at(position).unwrap());
+                // The upkeep check above proves this difference is positive.
+                transition_weights(
+                    agent.last_action,
+                    agent.weights,
+                    (u64::from(agent.integrity) - cost.effective_upkeep) as u32,
+                    &neighbours,
+                )
+            } else {
+                agent.weights.0.map(u64::from)
+            };
             let total: u64 = tickets.iter().sum();
             let mut draw = random.below(total);
             let choice = tickets
@@ -360,71 +384,81 @@ mod tests {
                 ],
             ),
         ] {
-            for (weights, empty, tickets) in cases {
-                let mut agents = vec![(
-                    position,
-                    Agent {
-                        id: 1,
-                        weights,
-                        integrity: 10,
-                        ..Agent::default()
-                    },
-                )];
-                for (index, &(x, y)) in neighbors.iter().take(8 - empty).enumerate() {
-                    agents.push((
-                        Position::new(x, y),
+            for current in [
+                None,
+                Some(ActionState::Wait),
+                Some(ActionState::Move),
+                Some(ActionState::Copy),
+                Some(ActionState::Repair),
+            ] {
+                for (weights, empty, tickets) in cases {
+                    let mut agents = vec![(
+                        position,
                         Agent {
-                            id: index as u64 + 2,
+                            id: 1,
                             weights,
-                            integrity: 1,
+                            integrity: 10,
+                            last_action: current,
                             ..Agent::default()
                         },
-                    ));
-                }
-                let world = World::with_maintenance(5, 5, &agents, Maintenance::default()).unwrap();
-                let before = world.clone();
-                let mut seen = [false; 4];
-                for seed in 0..1024 {
-                    let mut expected_random = Random::new(seed);
-                    let draw = expected_random.below(tickets.iter().sum());
-                    let choice = if draw < tickets[0] {
-                        0
-                    } else if draw < tickets[0] + tickets[1] {
-                        1
-                    } else if draw < tickets[0] + tickets[1] + tickets[2] {
-                        2
-                    } else {
-                        3
-                    };
-                    seen[choice] = true;
-                    let expected = match choice {
-                        0 => Action::Wait,
-                        1 | 2 => {
-                            let (x, y) = neighbors[expected_random.below(8) as usize];
-                            if choice == 1 {
-                                Action::Move(Position::new(x, y))
-                            } else {
-                                Action::Create(Position::new(x, y))
+                    )];
+                    for (index, &(x, y)) in neighbors.iter().take(8 - empty).enumerate() {
+                        agents.push((
+                            Position::new(x, y),
+                            Agent {
+                                id: index as u64 + 2,
+                                weights,
+                                integrity: 1,
+                                ..Agent::default()
+                            },
+                        ));
+                    }
+                    let world =
+                        World::with_maintenance(5, 5, &agents, Maintenance::default()).unwrap();
+                    let before = world.clone();
+                    let mut seen = [false; 4];
+                    for seed in 0..1024 {
+                        let mut expected_random = Random::new(seed);
+                        let draw = expected_random.below(tickets.iter().sum());
+                        let choice = if draw < tickets[0] {
+                            0
+                        } else if draw < tickets[0] + tickets[1] {
+                            1
+                        } else if draw < tickets[0] + tickets[1] + tickets[2] {
+                            2
+                        } else {
+                            3
+                        };
+                        seen[choice] = true;
+                        let expected = match choice {
+                            0 => Action::Wait,
+                            1 | 2 => {
+                                let (x, y) = neighbors[expected_random.below(8) as usize];
+                                if choice == 1 {
+                                    Action::Move(Position::new(x, y))
+                                } else {
+                                    Action::Create(Position::new(x, y))
+                                }
                             }
-                        }
-                        _ => Action::Repair,
-                    };
-                    let mut actual_random = Random::new(seed);
+                            _ => Action::Repair,
+                        };
+                        let mut actual_random = Random::new(seed);
+                        assert_eq!(
+                            proposals(&world, &mut actual_random),
+                            [Proposal::new(1, expected)],
+                            "seed {seed}, empty {empty}, weights {weights:?}, position {position:?}"
+                        );
+                        assert_eq!(
+                            actual_random, expected_random,
+                            "only the selected spatial action draws a destination"
+                        );
+                    }
+                    assert_eq!(seen, tickets.map(|tickets| tickets > 0));
                     assert_eq!(
-                        proposals(&world, &mut actual_random),
-                        [Proposal::new(1, expected)],
-                        "seed {seed}, empty {empty}, weights {weights:?}, position {position:?}"
-                    );
-                    assert_eq!(
-                        actual_random, expected_random,
-                        "only the selected spatial action draws a destination"
+                        world, before,
+                        "choice cannot edit properties, integrity, state or occupancy"
                     );
                 }
-                assert_eq!(seen, tickets.map(|tickets| tickets > 0));
-                assert_eq!(
-                    world, before,
-                    "choice cannot edit properties, integrity or occupancy"
-                );
             }
         }
     }

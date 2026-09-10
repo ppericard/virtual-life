@@ -139,7 +139,13 @@ fn moving_pays_origin_crowding_including_neighbors_that_die_or_move() {
     let events = w.step(&actions).unwrap();
     assert_eq!(w, reversed);
     assert_eq!((events.moves, events.failures, condition(&w, 1)), (2, 4, 3));
-    assert_eq!(w.agent_at(p(3, 3)).unwrap(), Some(agent(1, 3)));
+    assert_eq!(
+        w.agent_at(p(3, 3)).unwrap(),
+        Some(Agent {
+            last_action: Some(virtual_life::engine::ActionState::Move),
+            ..agent(1, 3)
+        })
+    );
     assert_eq!(
         upkeep_at(5, 5, w.cells(), p(3, 3), rules)
             .unwrap()
@@ -453,6 +459,24 @@ fn children_receive_fresh_integrity_but_inherit_properties_and_act_next_tick() {
             .all(|a| a.weights == parent.weights)
     );
     assert_eq!(w.totals().creations, 1);
+    assert_eq!(
+        w.cells()
+            .iter()
+            .flatten()
+            .find(|a| a.id == 71)
+            .unwrap()
+            .last_action,
+        Some(virtual_life::engine::ActionState::Copy)
+    );
+    assert_eq!(
+        w.cells()
+            .iter()
+            .flatten()
+            .find(|a| a.id == 72)
+            .unwrap()
+            .last_action,
+        None
+    );
     assert_eq!(experiment::proposals(&w, &mut random).len(), 2);
 }
 

@@ -27,7 +27,8 @@ export function inspectionText(sample, selected) {
   const agent = sample.cells[index];
   const properties = sample.experiment ? `Group ${groupLabel(agent.group)} · ${sample.experiment.maintenance ? 'Base weights' : 'Weights'} (wait, move, copy, ${sample.experiment.maintenance ? 'repair' : 'remove'}): ${agent.weights.join(', ')}` : `Value ${agent.value}`;
   const integrity = sample.experiment?.maintenance ? ` · Integrity ${agent.integrity}/${sample.experiment.maintenance.maximum} · Current occupied neighbours ${agent.occupied_neighbors}/8 · Next-tick effective upkeep ${agent.next_tick_upkeep} (base ${sample.experiment.maintenance.upkeep} + crowding ${agent.crowding_upkeep}; displayed neighbourhood)` : '';
-  return `ID ${agent.id} · ${properties} · Position (${index % sample.width}, ${Math.floor(index / sample.width)})${integrity}`;
+  const action = sample.experiment?.maintenance ? ` · Last selected action: ${agent.last_action === null ? 'Not yet acted' : agent.last_action === undefined ? 'Unavailable' : `${agent.last_action} (success not implied)`}` : '';
+  return `ID ${agent.id} · ${properties} · Position (${index % sample.width}, ${Math.floor(index / sample.width)})${integrity}${action}`;
 }
 
 export function renderReadouts(sample, selected, root = document) {

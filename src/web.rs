@@ -75,6 +75,7 @@ pub fn snapshot_json(sample: &Snapshot) -> Value {
                         crate::engine::Position::new(index % sample.width, index / sample.width), rules)
                         .expect("snapshot of a validated world");
                     cell["integrity"] = json!(agent.integrity);
+                    cell["last_action"] = json!(agent.last_action.map(crate::engine::ActionState::label));
                     // These describe the displayed frame, not the previous tick's charge.
                     cell["occupied_neighbors"] = json!(cost.occupied_neighbors);
                     cell["next_tick_upkeep"] = json!(cost.effective_upkeep.to_string());

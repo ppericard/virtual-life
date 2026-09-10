@@ -361,6 +361,19 @@ fn fixed_tick_results_ignore_observation_rate_backpressure_and_disconnect() {
             }),
             ..ExperimentConfig::default()
         });
+        // Guaranteed survivors make the action-memory comparison non-vacuous.
+        check_observation_independence(ExperimentConfig {
+            width: 5,
+            height: 5,
+            maintenance: Some(virtual_life::engine::Maintenance {
+                upkeep: 0,
+                crowding_upkeep: 0,
+                move_wear: 0,
+                copy_wear: 0,
+                ..Default::default()
+            }),
+            ..ExperimentConfig::default()
+        });
         let _ = finished.send(());
     });
     completion
@@ -370,6 +383,7 @@ fn fixed_tick_results_ignore_observation_rate_backpressure_and_disconnect() {
 
 #[test]
 fn wear_crowding_v2_seed_one_records_exact_tick_ten_world_and_failures() {
+    use virtual_life::engine::ActionState::{Copy, Move, Repair, Wait};
     let config = ExperimentConfig {
         width: 8,
         height: 6,
@@ -415,6 +429,15 @@ fn wear_crowding_v2_seed_one_records_exact_tick_ten_world_and_failures() {
             value: 0,
             weights: config.bundles[group],
             integrity,
+            // Selected proposals captured from the unchanged #9 baseline.
+            last_action: match id {
+                5 | 25 | 3 => Some(Wait),
+                22 | 24 | 4 | 16 | 15 | 9 => Some(Repair),
+                10 => Some(Copy),
+                23 | 26 | 19 | 27 | 1 | 20 | 8 | 21 | 6 | 18 => Some(Move),
+                28 => None,
+                _ => unreachable!(),
+            },
         });
     }
     assert_eq!(world.cells(), expected);
@@ -466,6 +489,7 @@ fn wear_crowding_v2_seed_one_records_exact_tick_ten_world_and_failures() {
 
 #[test]
 fn wear_crowding_v3_seed_one_records_exact_tick_ten_world_and_failure_costs() {
+    use virtual_life::engine::ActionState::{Copy, Move, Repair, Wait};
     use virtual_life::engine::FailureReason::{CopyWear, MoveWear, Upkeep};
     use virtual_life::engine::{Events, Failure};
     let config = ExperimentConfig {
@@ -503,6 +527,14 @@ fn wear_crowding_v3_seed_one_records_exact_tick_ten_world_and_failure_costs() {
             value: 0,
             weights: config.bundles[group],
             integrity,
+            // Selected proposals captured from the unchanged #9 baseline.
+            last_action: match id {
+                23 | 16 | 24 | 8 | 22 => Some(Move),
+                6 | 3 => Some(Copy),
+                27 | 9 => Some(Wait),
+                5 | 20 | 26 | 25 | 10 | 21 => Some(Repair),
+                _ => unreachable!(),
+            },
         });
     }
     assert_eq!(world.cells(), expected);
@@ -578,6 +610,18 @@ fn check_observation_independence(configuration: ExperimentConfig) {
         ..Config::default()
     };
     let expected = Worker::spawn(base.clone(), None).unwrap().join().unwrap();
+    if expected
+        .maintenance()
+        .is_some_and(|rules| rules.upkeep == 0 && rules.crowding_upkeep == 0)
+    {
+        assert!(
+            expected
+                .cells()
+                .iter()
+                .flatten()
+                .any(|a| a.last_action.is_some())
+        );
+    }
     for cadence in [1, 3, 97, 1000] {
         for connected in [true, false] {
             let (send, receive) = mpsc::sync_channel::<Snapshot>(1);
