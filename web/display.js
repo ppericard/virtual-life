@@ -83,17 +83,25 @@ export function sampleDescription(history) {
   return `${ticks} · ${history.length} sample${history.length === 1 ? '' : 's'} · ${gaps} sampling gap${gaps === 1 ? '' : 's'}.${history.length === HISTORY_LIMIT ? ' Older samples are discarded as new ones arrive.' : ''} Sampled history, not a complete recording.`;
 }
 
-// Logical canvas coordinates stay fixed; CSS scales them to the window.
+// One pitch for both axes; margins also leave room for the largest coordinates.
+function gridGeometry(sample) {
+  const pitch = 540 / Math.max(sample.width, sample.height);
+  const left = Math.max(40, String(sample.height - 1).length * 10 + 8);
+  const right = Math.max(20, String(sample.width - 1).length * 5 + 4);
+  return {pitch, left, top: 40, width: left + sample.width * pitch + right, height: 60 + sample.height * pitch};
+}
+
 export function gridPosition(canvas, event, sample) {
-  const box = canvas.getBoundingClientRect();
-  const x = Math.floor(((event.clientX - box.left) * 600 / box.width - 40) / (540 / sample.width));
-  const y = Math.floor(((event.clientY - box.top) * 600 / box.height - 40) / (540 / sample.height));
+  const box = canvas.getBoundingClientRect(), g = gridGeometry(sample), scale = box.width / g.width;
+  const x = Math.floor(((event.clientX - box.left) / scale - g.left) / g.pitch);
+  const y = Math.floor(((event.clientY - box.top) / scale - g.top) / g.pitch);
   return x >= 0 && y >= 0 && x < sample.width && y < sample.height ? y * sample.width + x : -1;
 }
 
 // Keep drawing and hit testing in logical coordinates; CSS owns the displayed size.
-function prepareCanvas(canvas, width, height) {
-  const box = canvas.getBoundingClientRect(), ratio = window.devicePixelRatio || 1;
+function prepareCanvas(canvas, width, height, maxSide = Infinity) {
+  const box = canvas.getBoundingClientRect();
+  const ratio = Math.min(window.devicePixelRatio || 1, maxSide / box.width, maxSide / box.height);
   const pixelsWide = Math.max(1, Math.round(box.width * ratio));
   const pixelsHigh = Math.max(1, Math.round(box.height * ratio));
   if (canvas.width !== pixelsWide) canvas.width = pixelsWide;
@@ -105,23 +113,27 @@ function prepareCanvas(canvas, width, height) {
 }
 
 export function drawGrid(canvas, sample, selected) {
-  const ctx = prepareCanvas(canvas, 600, 600);
-  const w = 540 / sample.width, h = 540 / sample.height;
+  const g = gridGeometry(sample), w = g.pitch, h = g.pitch;
+  canvas.style.aspectRatio = `${g.width} / ${g.height}`;
   const box = canvas.getBoundingClientRect();
-  const showLetters = Math.min(w * box.width / 600, h * box.height / 600) >= 14;
+  // Cap raster allocation at 4096² pixels. CSS geometry stays square at any DPR,
+  // including fractional backing-size rounding and very elongated worlds.
+  const ctx = prepareCanvas(canvas, box.width, box.height, 4096), scale = box.width / g.width;
+  ctx.scale(scale, scale);
+  const showLetters = w * scale >= 14;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '16px system-ui'; ctx.fillStyle = '#536662';
   // Wider coordinates need more space as their digit count grows.
   const xSpacing = Math.max(24, ctx.measureText(String(sample.width - 1)).width + 8);
-  for (let x = 0; x < sample.width; x += Math.max(1, Math.ceil(xSpacing / w))) ctx.fillText(String(x), 40 + (x + .5) * w, 22);
-  for (let y = 0; y < sample.height; y += Math.max(1, Math.ceil(24 / h))) ctx.fillText(String(y), 20, 40 + (y + .5) * h);
+  for (let x = 0; x < sample.width; x += Math.max(1, Math.ceil(xSpacing / w))) ctx.fillText(String(x), g.left + (x + .5) * w, 22);
+  for (let y = 0; y < sample.height; y += Math.max(1, Math.ceil(24 / h))) ctx.fillText(String(y), g.left / 2, g.top + (y + .5) * h);
   sample.cells.forEach((agent, index) => {
-    const x = 40 + (index % sample.width) * w, y = 40 + Math.floor(index / sample.width) * h;
+    const x = g.left + (index % sample.width) * w, y = g.top + Math.floor(index / sample.width) * h;
     ctx.fillStyle = agent ? (sample.experiment ? groupColor(agent.group) : colorFor(agent.id)) : '#f5f7f2';
     const gap = Math.min(2, Math.min(w, h) / 10);
     ctx.fillRect(x + gap, y + gap, w - gap * 2, h - gap * 2);
     if (agent) {
       ctx.fillStyle = sample.experiment ? groupInk(agent.group) : '#203333'; ctx.font = `${sample.experiment ? Math.min(18, Math.min(w, h) * .65) : 22}px system-ui`;
-      if (!sample.experiment || showLetters) ctx.fillText(sample.experiment ? groupLabel(agent.group) : agent.id, x + w / 2, y + h / 2, Math.max(1, w - gap * 2));
+      if (!sample.experiment || showLetters) ctx.fillText(sample.experiment ? groupLabel(agent.group) : agent.id, x + w / 2, y + h / 2);
       if (agent.id === selected) { ctx.strokeStyle = '#203333'; ctx.lineWidth = Math.min(4, w / 8); ctx.strokeRect(x + gap, y + gap, w - gap * 2, h - gap * 2); }
     }
   });

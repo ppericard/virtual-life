@@ -31,7 +31,7 @@ button:disabled { opacity: .45; cursor: default; }button:focus-visible, select:f
 #connection { background: #fff0dc; color: #6a3812; padding: 12px; border: 1px solid #ce9e69; border-radius: 5px; }
 .workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; padding: 30px 0; }
 .section-heading { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; margin-bottom: 14px; }.section-heading span { font-size: 11px; color: #62756e; }
-canvas { width: 100%; height: auto; display: block; }#grid { background: #e6ede6; border-radius: 6px; cursor: crosshair; aspect-ratio: 1; }#plot { aspect-ratio: 600 / 230; max-width: 720px; }
+canvas { width: 100%; height: auto; display: block; }#grid { background: #e6ede6; border-radius: 6px; cursor: crosshair; }#plot { aspect-ratio: 600 / 230; max-width: 720px; }
 .details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 40px; width: 100%; max-width: 1440px; margin-inline: auto; align-items: start; }
 .details > section { min-width: 0; border-top: 1px solid #ccd7d0; padding-top: 24px; }
 label { font-size: 12px; margin-right: 10px; }select { max-width: 100%; }

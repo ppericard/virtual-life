@@ -6,7 +6,46 @@ test.use({
   serverArgs: ['--mode', 'autonomous', '--width', '64', '--height', '48', '--ticks', '80'],
 });
 
-async function checkLayout(page, width) {
+test.beforeEach(async ({page}) => {
+  await page.addInitScript(() => {
+    // Observe real drawing and its device-to-CSS transform, without changing pixels.
+    for (const name of ['clearRect', 'fillRect', 'strokeRect', 'fillText']) {
+      const original = CanvasRenderingContext2D.prototype[name];
+      CanvasRenderingContext2D.prototype[name] = function(...args) {
+        if (this.canvas.id === 'grid') {
+          if (name === 'clearRect') window.gridPaint = {cells: [], borders: [], textScales: []};
+          const paint = window.gridPaint;
+          if (paint && name !== 'clearRect' && paint.cells.length < 16384) {
+            const box = this.canvas.getBoundingClientRect(), t = this.getTransform();
+            const sx = t.a * box.width / this.canvas.width, sy = t.d * box.height / this.canvas.height;
+            if (name === 'fillText') paint.textScales.push([sx, sy]);
+            else {
+              const [x,y,w,h] = args;
+              paint[name === 'fillRect' ? 'cells' : 'borders'].push({x:x*sx,y:y*sy,w:w*sx,h:h*sy});
+            }
+          }
+        }
+        return original.apply(this, args);
+      };
+    }
+  });
+});
+
+async function checkSquares(page, sample) {
+  const paint = await page.evaluate(() => window.gridPaint);
+  expect(paint.cells.length).toBe(Math.min(sample.cells.length, 16384));
+  const largestCellError = [...paint.cells, ...paint.borders].reduce((error, cell) => Math.max(error, Math.abs(cell.w-cell.h)), 0);
+  expect(largestCellError).toBeLessThan(.02);
+  const across = paint.cells[1].x - paint.cells[0].x;
+  if (sample.width < paint.cells.length) {
+    const down = paint.cells[sample.width].y - paint.cells[0].y;
+    expect(Math.abs(across-down)).toBeLessThan(.02);
+  }
+  const largestTextError = paint.textScales.reduce((error, [sx,sy]) => Math.max(error, Math.abs(sx/sy-1)), 0);
+  expect(largestTextError).toBeLessThan(.001);
+}
+
+async function checkLayout(page, width, portrait = false) {
   const layout = await page.evaluate(() => {
     const rect = selector => document.querySelector(selector).getBoundingClientRect();
     const grid = rect('#grid'), world = rect('.world'), toolbar = rect('.toolbar');
@@ -24,33 +63,33 @@ async function checkLayout(page, width) {
   expect(layout.grid.width).toBeGreaterThan(width - 80);
   expect(layout.grid.left).toBeGreaterThanOrEqual(16);
   expect(width - layout.grid.right).toBeCloseTo(layout.grid.left, 0);
-  expect(layout.grid.height).toBeCloseTo(layout.grid.width, 0);
+  expect(layout.grid.height > layout.grid.width).toBe(portrait);
   expect(layout.controlsAbove).toBe(true);
   expect(layout.panelsBelow).toBe(true);
   expect(layout.plotWidth).toBeLessThanOrEqual(760);
   for (const id of ['grid', 'plot']) {
     await expect.poll(() => page.locator(`#${id}`).evaluate(canvas => {
       const box = canvas.getBoundingClientRect();
-      return [canvas.width, canvas.height, Math.round(box.width * devicePixelRatio), Math.round(box.height * devicePixelRatio)];
+      const ratio = canvas.id === 'grid' ? Math.min(devicePixelRatio, 4096/box.width, 4096/box.height) : devicePixelRatio;
+      return [canvas.width, canvas.height, Math.round(box.width * ratio), Math.round(box.height * ratio)];
     }).then(([w, h, expectedW, expectedH]) => w === expectedW && h === expectedH)).toBe(true);
   }
 }
 
 async function clickCell(page, sample, index) {
-  const canvas = page.locator('#grid'), box = await canvas.boundingBox();
-  await canvas.click({position: {
-    x: (40 + (index % sample.width + .5) * 540 / sample.width) * box.width / 600,
-    y: (40 + (Math.floor(index / sample.width) + .5) * 540 / sample.height) * box.height / 600,
-  }});
+  expect(index).toBeLessThan(sample.cells.length);
+  const cell = await page.evaluate(index => window.gridPaint.cells[index], index);
+  await page.locator('#grid').click({position: {x:cell.x+cell.w/2,y:cell.y+cell.h/2}});
 }
 
 async function checkPixels(page, sample) {
   // Sample interior corners in backing pixels, away from letters and selection borders.
   const pixels = await page.locator('#grid').evaluate((canvas, sample) => {
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d'), box = canvas.getBoundingClientRect();
     return sample.cells.map((_, i) => {
-      const x = (40 + (i % sample.width + .25) * 540 / sample.width) * canvas.width / 600;
-      const y = (40 + (Math.floor(i / sample.width) + .25) * 540 / sample.height) * canvas.height / 600;
+      const cell = window.gridPaint.cells[i];
+      const x = (cell.x + cell.w * .2) * canvas.width / box.width;
+      const y = (cell.y + cell.h * .2) * canvas.height / box.height;
       return '#' + [...ctx.getImageData(x, y, 1, 1).data].slice(0, 3).map(n => n.toString(16).padStart(2, '0')).join('');
     });
   }, sample);
@@ -61,13 +100,13 @@ async function checkPixels(page, sample) {
 async function checkLetters(page, sample, visible) {
   // A-D use white ink. Look inside occupied cells, excluding gaps and borders.
   const inkByGroup = await page.locator('#grid').evaluate((canvas, sample) => {
-    const ctx = canvas.getContext('2d'), found = [false, false, false, false];
+    const ctx = canvas.getContext('2d'), found = [false, false, false, false], box = canvas.getBoundingClientRect();
     sample.cells.forEach((agent, i) => {
       if (!agent) return;
-      const w = 540 / sample.width * canvas.width / 600;
-      const h = 540 / sample.height * canvas.height / 600;
-      const x = Math.ceil(40 * canvas.width / 600 + (i % sample.width + .25) * w);
-      const y = Math.ceil(40 * canvas.height / 600 + (Math.floor(i / sample.width) + .25) * h);
+      const cell = window.gridPaint.cells[i];
+      const w = cell.w * canvas.width / box.width, h = cell.h * canvas.height / box.height;
+      const x = Math.ceil((cell.x + cell.w * .25) * canvas.width / box.width);
+      const y = Math.ceil((cell.y + cell.h * .25) * canvas.height / box.height);
       const pixels = ctx.getImageData(x, y, Math.floor(w / 2), Math.floor(h / 2)).data;
       for (let p = 0; p < pixels.length; p += 4) {
         if (pixels[p] > 230 && pixels[p + 1] > 230 && pixels[p + 2] > 230 && pixels[p + 3] === 255) found[agent.group] = true;
@@ -76,6 +115,23 @@ async function checkLetters(page, sample, visible) {
     return found;
   }, sample);
   expect(inkByGroup).toEqual(Array(4).fill(visible));
+}
+
+async function checkMargins(page, sample, occupied) {
+  const canvas = page.locator('#grid'), box = await canvas.boundingBox();
+  const cells = await page.evaluate(() => window.gridPaint.cells);
+  const first = cells[0], last = cells.at(-1);
+  for (const position of [
+    {x:first.x/2,y:first.y+first.h/2},
+    {x:first.x+first.w/2,y:first.y/2},
+    {x:(last.x+last.w+box.width)/2,y:last.y+last.h/2},
+    {x:last.x+last.w/2,y:(last.y+last.h+box.height)/2},
+  ]) {
+    await canvas.click({position});
+    await expect(page.locator('#agent')).toHaveValue('');
+    await clickCell(page, sample, occupied);
+    await expect(page.locator('#agent')).toHaveValue(sample.cells[occupied].id);
+  }
 }
 
 async function save(page, info, name) {
@@ -92,6 +148,7 @@ test('full-width world stays crisp and selection survives paused and offline res
   await expect(page.getByRole('button', {name: 'Single step'})).toBeEnabled();
   const before = await (await page.request.get(`${server.url}/api/snapshot`)).json();
   expect([before.width, before.height]).toEqual([64, 48]);
+  await checkSquares(page, before);
   const occupied = before.cells.findIndex(Boolean), empty = before.cells.findIndex(agent => !agent);
   await clickCell(page, before, occupied);
   const selected = before.cells[occupied].id;
@@ -104,12 +161,14 @@ test('full-width world stays crisp and selection survives paused and offline res
   page.on('request', request => { if (request.method() === 'POST') writes++; });
 
   await checkLayout(page, 1680);
+  await checkSquares(page, before);
   await checkPixels(page, before);
   await checkLetters(page, before, true);
   const pictures = await page.evaluate(() => ['grid', 'plot'].map(id => document.getElementById(id).toDataURL()));
   await save(page, info, 'wide-world-dpr2');
   await page.setViewportSize({width: 1360, height: 900});
   await checkLayout(page, 1360);
+  await checkSquares(page, before);
   await checkPixels(page, before);
   await expect(page.locator('#agent')).toHaveValue(selected);
   await expect(page.locator('#inspection')).toHaveText(inspection);
@@ -131,6 +190,7 @@ test('full-width world stays crisp and selection survives paused and offline res
   await checkLetters(page, before, false);
   await page.setViewportSize({width: 390, height: 844});
   await checkLayout(page, 390);
+  await checkSquares(page, before);
   await checkPixels(page, before);
   await checkLetters(page, before, false);
   await expect(page.locator('#agent')).toHaveValue(selected);
@@ -150,6 +210,7 @@ test('full-width world stays crisp and selection survives paused and offline res
   await clickCell(page, before, occupied);
   await expect(page.locator('#agent')).toHaveValue(selected);
   await expect(page.locator('#inspection')).toHaveText(inspection);
+  await checkMargins(page, before, occupied);
   await page.setViewportSize({width: 1680, height: 1000});
   await checkLayout(page, 1680);
   await checkPixels(page, before);
@@ -225,7 +286,7 @@ test.describe('large-world coordinates', () => {
           .toBeGreaterThanOrEqual(4 * box.width / 600);
       }
       for (let i = 1; i < vertical.length; i++) {
-        expect(vertical[i].top - vertical[i - 1].bottom).toBeGreaterThanOrEqual(4 * box.height / 600);
+        expect(vertical[i].top - vertical[i - 1].bottom).toBeGreaterThanOrEqual(4 * box.width / 600);
       }
     };
     await checkLabels();
@@ -246,3 +307,46 @@ test.describe('large-world coordinates', () => {
     expect(await (await page.request.get(`${server.url}/api/snapshot`)).json()).toEqual(before);
   });
 });
+
+test.describe('portrait world with fractional DPR', () => {
+  test.use({viewport:{width:700,height:900},deviceScaleFactor:1.25,
+    serverArgs:['--mode','autonomous','--width','6','--height','11','--ticks','5']});
+  test('square cells and undistorted labels retain exact portrait hit targets', async ({page,server}, info) => {
+    await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
+    const before = await (await page.request.get(`${server.url}/api/snapshot`)).json();
+    const occupied = before.cells.findLastIndex(Boolean);
+    let writes = 0;
+    page.on('request', request => { if (request.method() === 'POST') writes++; });
+    for (const width of [700,390]) {
+      await page.setViewportSize({width,height:900});
+      await checkLayout(page, width, true);
+      await checkSquares(page, before);
+      await checkPixels(page, before);
+      await clickCell(page, before, occupied);
+      await expect(page.locator('#agent')).toHaveValue(before.cells[occupied].id);
+      await expect(page.locator('#inspection')).toContainText(`Position (${occupied%6}, ${Math.floor(occupied/6)})`);
+      await checkMargins(page, before, occupied);
+      await checkSquares(page, before);
+      await save(page, info, `portrait-${width}-dpr1.25`);
+    }
+    expect(writes).toBe(0);
+    expect(await (await page.request.get(`${server.url}/api/snapshot`)).json()).toEqual(before);
+  });
+});
+
+for (const [width,height] of [[3,87381],[87381,3]]) {
+  test.describe(`extreme ${width}x${height} world`, () => {
+    test.use({viewport:{width:1280,height:900},deviceScaleFactor:2,
+      serverArgs:['--mode','autonomous','--width',String(width),'--height',String(height),'--occupancy','0','--ticks','0']});
+    test('supported extreme aspect ratios keep the raster allocation bounded', async ({page,server}) => {
+      await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
+      await checkLayout(page, 1280, height>width);
+      const sample = await (await page.request.get(`${server.url}/api/snapshot`)).json();
+      await checkSquares(page, sample);
+      const size = await page.locator('#grid').evaluate(canvas => [canvas.width,canvas.height]);
+      expect(Math.max(...size)).toBeLessThanOrEqual(4096);
+      expect(size[0]*size[1]).toBeLessThanOrEqual(4096*4096);
+      if (height>width) expect(Math.max(...size)).toBe(4096);
+    });
+  });
+}
