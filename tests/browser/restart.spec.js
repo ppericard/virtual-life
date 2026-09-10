@@ -74,7 +74,7 @@ test('a retained page must not silently mix histories across a real server resta
     await page.getByRole('button', { name: 'Single step' }).click();
     await expect(page.locator('#tick')).toHaveText(String(tick));
   }
-  await expect(page.locator('#samples')).toContainText('Observed ticks: 0, 1, 2, 3, 4, 5.');
+  await expect(page.locator('#samples')).toContainText('Ticks 0–5 · 6 samples');
   await page.locator('#agent').selectOption('5');
   const gate = await holdSnapshots(page);
   try {

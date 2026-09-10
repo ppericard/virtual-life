@@ -57,11 +57,11 @@ test('initial pause and every MODEL transition, grid inspection, exact final sta
   for (const name of ['Single step','Resume','Pause']) await expect(page.getByRole('button', {name, exact:true})).toBeDisabled();
   await clickCell(page, 1, 2);
   await expect(page.locator('#inspection')).toHaveText('ID 5 · Value 21 · Position (1, 2)');
-  await expect(page.locator('#samples')).toContainText('Observed ticks: 0, 1, 2, 3, 4, 5. 0 sampling gaps.');
+  await expect(page.locator('#samples')).toContainText('Ticks 0–5 · 6 samples · 0 sampling gaps.');
   await screenshot(page, info, 'completed');
   await page.reload();
   await checkState(page, server, 5);
-  await expect(page.locator('#samples')).toContainText('Observed ticks: 5.');
+  await expect(page.locator('#samples')).toContainText('Tick 5 · 1 sample');
 });
 
 test.describe('pacing and gaps', () => {
@@ -98,7 +98,7 @@ test.describe('completion without a page', () => {
     await expect.poll(async () => (await (await page.request.get(`${server.url}/api/snapshot`)).json()).status).toBe('completed');
     await page.goto(server.url);
     await checkState(page,server,5);
-    await expect(page.locator('#samples')).toContainText('Observed ticks: 5.');
+    await expect(page.locator('#samples')).toContainText('Tick 5 · 1 sample');
   });
 });
 
@@ -165,7 +165,7 @@ test('refresh and closing the only page never reset or stop the process', async 
   await expect(page.locator('#tick')).toHaveText('1');
   await page.reload();
   await expect(page.locator('#tick')).toHaveText('1');
-  await expect(page.locator('#samples')).toContainText('Observed ticks: 1.');
+  await expect(page.locator('#samples')).toContainText('Tick 1 · 1 sample');
   await page.getByRole('button', {name:'Resume',exact:true}).click();
   await expect(page.getByRole('status')).toHaveText('running');
   await page.close();

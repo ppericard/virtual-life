@@ -49,7 +49,7 @@ test.describe('wear and repair default experiment', () => {
     await save(page,info,'wear-repair-narrow');
     await page.reload(); await expect(page.getByRole('status')).toHaveText('completed');
     await expect(page.locator('#failure-summary')).toContainText(`${final.totals.failures} cumulative failures`);
-    await expect(page.locator('#samples')).toContainText('Observed ticks: 80.');
+    await expect(page.locator('#samples')).toContainText('Tick 80 · 1 sample');
     await server.restart(); await expect(page.locator('#run-message')).toContainText('New experiment connected');
     await expect(page.locator('#tick')).toHaveText('0'); await expect(page.locator('#agent')).toHaveValue('');
     await expect(page.locator('#failure-summary')).toContainText('0 cumulative failures');
@@ -134,7 +134,7 @@ test.describe('autonomous visual experiment', () => {
     for(const name of ['Resume','Pause','Single step']) await expect(page.getByRole('button',{name,exact:true})).toBeDisabled();
     await save(page,info,'autonomous-completed');
     await page.reload();
-    await expect(page.locator('#samples')).toContainText('Observed ticks: 80.');
+    await expect(page.locator('#samples')).toContainText('Tick 80 · 1 sample');
     await expect(page.locator('#legend .group-count')).toHaveText(final.experiment.groups.map(g=>g.count));
   });
 
@@ -146,7 +146,7 @@ test.describe('autonomous visual experiment', () => {
     await server.restart();
     await expect(page.locator('#run-message')).toContainText('New experiment connected');
     await expect(page.locator('#tick')).toHaveText('0');
-    await expect(page.locator('#samples')).toContainText('Observed ticks: 0.');
+    await expect(page.locator('#samples')).toContainText('Tick 0 · 1 sample');
     await expect(page.locator('#agent')).toHaveValue('');
     await expect(page.getByRole('status')).toHaveText('paused');
     expect((await snapshot(page,server)).cells).toEqual(initial.cells);

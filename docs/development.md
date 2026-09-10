@@ -67,7 +67,7 @@ A channel is a bounded mailbox between threads. A receipt means the worker proce
 
 The runner retains one queued snapshot and at most one replaceable pending snapshot. It uses `try_send`, not a blocking send, at sampling/control/completion boundaries. A collector retains the latest cache independently of any browser. HTTP handlers copy that cache before serialization or network I/O; reads never ask the engine to advance or produce a frame. There are at most 16 concurrent connections and one outstanding browser snapshot read.
 
-The page keeps at most 128 `(tick, total, per-group counts)` points, labels observed ticks and sampling gaps, and does not join lines across gaps. Accepted-event totals come from transitions, not frame differences. Observation changes overhead, not fixed-tick outcomes; neither a throughput guarantee nor a complete event log/replay is implied.
+The page keeps at most 128 `(tick, total, per-group counts)` points and shows a compact tick range, sample count and sampling-gap count below the plot. Lines do not join across gaps. Accepted-event totals come from transitions, not frame differences. Observation changes overhead, not fixed-tick outcomes; neither a throughput guarantee nor a complete event log/replay is implied.
 
 | Request | Meaning |
 |---|---|

@@ -75,8 +75,10 @@ export function recordSample(history, sample) {
 }
 
 export function sampleDescription(history) {
+  if (!history.length) return 'Waiting for the first sample.';
   const gaps = history.slice(1).filter((point, index) => BigInt(point.tick) - BigInt(history[index].tick) > 1n).length;
-  return `Observed ticks: ${history.map(point => point.tick).join(', ')}. ${gaps} sampling gap${gaps === 1 ? '' : 's'}. History starts at tick ${history[0]?.tick ?? '—'}.${history.length === HISTORY_LIMIT ? ' Buffer full: older points are discarded as new ticks arrive.' : ''} This is a sampled window, not a complete recording.`;
+  const ticks = history.length === 1 ? `Tick ${history[0].tick}` : `Ticks ${history[0].tick}–${history.at(-1).tick}`;
+  return `${ticks} · ${history.length} sample${history.length === 1 ? '' : 's'} · ${gaps} sampling gap${gaps === 1 ? '' : 's'}.${history.length === HISTORY_LIMIT ? ' Older samples are discarded as new ones arrive.' : ''} Sampled history, not a complete recording.`;
 }
 
 // Logical canvas coordinates stay fixed; CSS scales them to the window.
