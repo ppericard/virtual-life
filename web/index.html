@@ -23,17 +23,18 @@
         <p class="hint">Click an occupied square to follow its agent. Coordinates start at zero.</p>
       </section>
       <aside>
-        <section id="experiment-settings" hidden><div class="section-heading"><h2>Property groups</h2><span>Wait / move / copy / remove</span></div><div id="legend"></div><p id="configuration" class="hint"></p></section><section class="inspection"><div class="section-heading"><h2>Inspect an agent</h2><span>Read only</span></div>
+        <section id="experiment-settings" hidden><div class="section-heading"><h2>Property groups</h2><span id="action-order">Wait / move / copy / remove</span></div><div id="legend"></div><p id="configuration" class="hint"></p></section><section class="inspection"><div class="section-heading"><h2>Inspect an agent</h2><span>Read only</span></div>
           <label for="agent">Agent</label><select id="agent"><option value="">Choose an agent</option></select>
           <p id="inspection" aria-live="polite">Select an occupied square or choose an agent above.</p>
         </section>
         <section class="measurements"><div class="section-heading"><h2>Measurements</h2><span>Accepted events</span></div>
-          <dl><div class="population"><dt>Agents now</dt><dd id="count">—</dd></div><div><dt>Moves</dt><dd id="moves">—</dd></div><div><dt>Creations</dt><dd id="creations">—</dd></div><div><dt>Removals</dt><dd id="removals">—</dd></div><div><dt>Value changes</dt><dd id="value_changes">—</dd></div></dl>
+          <dl><div class="population"><dt>Agents now</dt><dd id="count">—</dd></div><div><dt>Moves</dt><dd id="moves">—</dd></div><div><dt>Creations</dt><dd id="creations">—</dd></div><div><dt>Removals</dt><dd id="removals">—</dd></div><div><dt>Value changes</dt><dd id="value_changes">—</dd></div><div class="maintenance-measurement" hidden><dt>Repairs</dt><dd id="repairs">—</dd></div><div class="maintenance-measurement" hidden><dt>Failures</dt><dd id="failures">—</dd></div></dl>
         </section>
         <section class="history"><div class="section-heading"><h2>Population over time</h2></div>
           <canvas id="plot" width="600" height="230" role="img" aria-label="Observed agent counts"></canvas>
           <p id="samples">Waiting for the first sample.</p><p class="hint">Up to 128 observed points. Gaps stay unconnected; refresh starts a new observation history.</p>
         </section>
+        <section id="failure-evidence" hidden><div class="section-heading"><h2>Failure evidence</h2></div><p id="failure-summary" class="hint"></p><details><summary>Recent failure records</summary><ol id="failure-list"></ol></details></section>
       </aside>
     </div>
     <footer>The Rust process owns this experiment. Refresh or close this page and reconnect at any time. Stop the server with Ctrl+C in its terminal.</footer>

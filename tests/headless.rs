@@ -1,6 +1,34 @@
 use std::process::Command;
 
 #[test]
+fn repair_only_population_maintains_integrity_in_the_default_experiment() {
+    let output = Command::new(env!("CARGO_BIN_EXE_headless"))
+        .args([
+            "--mode",
+            "autonomous",
+            "--width",
+            "3",
+            "--height",
+            "3",
+            "--occupancy",
+            "1",
+            "--bundles",
+            "0,0,0,1",
+            "--proportions",
+            "1",
+            "--ticks",
+            "2",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("tick=2 count=9"), "{text}");
+    assert!(text.contains("repairs=18 failures=0"), "{text}");
+    assert!(text.contains("integrity=10/10"), "{text}");
+}
+
+#[test]
 fn supported_headless_commands_report_the_fixture_and_extra_wait_ticks() {
     for (ticks, count) in [(0, 3), (5, 2), (8, 2)] {
         let output = Command::new(env!("CARGO_BIN_EXE_headless"))
@@ -43,6 +71,8 @@ fn autonomous_cli_records_reproducible_effective_settings_and_final_population()
     let arguments = [
         "--mode",
         "autonomous",
+        "--survival",
+        "random",
         "--width",
         "8",
         "--height",

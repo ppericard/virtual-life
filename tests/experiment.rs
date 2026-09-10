@@ -15,7 +15,7 @@ fn settings() -> ExperimentConfig {
     ExperimentConfig {
         width: 8,
         height: 6,
-        ..ExperimentConfig::default()
+        ..ExperimentConfig::random()
     }
 }
 
@@ -65,6 +65,7 @@ fn exact_tuple_identity_aggregates_proportions_and_preserves_zero_groups() {
         ],
         proportions: vec![1, 2, 3, 0],
         seed: 1,
+        maintenance: None,
     };
     let (world, _, info) = config.initialize().unwrap();
     assert_eq!(info.groups.len(), 3); // Proportional, nonidentical tuples remain distinct.
@@ -345,7 +346,12 @@ fn fixed_tick_results_ignore_observation_rate_backpressure_and_disconnect() {
     // blocking publisher must fail the guard, never hang the suite.
     let (finished, completion) = mpsc::channel();
     thread::spawn(move || {
-        check_observation_independence();
+        check_observation_independence(settings());
+        check_observation_independence(ExperimentConfig {
+            width: 8,
+            height: 6,
+            ..ExperimentConfig::default()
+        });
         let _ = finished.send(());
     });
     completion
@@ -353,12 +359,12 @@ fn fixed_tick_results_ignore_observation_rate_backpressure_and_disconnect() {
         .expect("observation checks exceeded deadlock guard");
 }
 
-fn check_observation_independence() {
+fn check_observation_independence(configuration: ExperimentConfig) {
     let base = Config {
         ticks: 240,
         start_paused: false,
         tick_interval: Duration::ZERO,
-        experiment: Some(settings()),
+        experiment: Some(configuration),
         ..Config::default()
     };
     let expected = Worker::spawn(base.clone(), None).unwrap().join().unwrap();
@@ -395,6 +401,12 @@ fn check_observation_independence() {
                 let sample = collector.join().unwrap();
                 assert_eq!(sample.tick, 240);
                 assert_eq!(sample.cells, expected.cells());
+                assert_eq!(sample.totals, expected.totals());
+                assert_eq!(
+                    sample.failures,
+                    expected.failures().iter().copied().collect::<Vec<_>>()
+                );
+                assert_eq!(sample.discarded_failures, expected.discarded_failures());
                 assert_eq!(
                     sample
                         .experiment

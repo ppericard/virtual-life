@@ -24,7 +24,7 @@ cargo run --locked --features web --bin web -- --mode autonomous
 
 Open the printed address, normally **http://127.0.0.1:7878**, in your browser. Use Resume, Pause or Single step, and click an agent to inspect it. The page shows a reproducibly populated grid, four property groups with colours and letters, individual inspection, population trajectories and accepted event totals.
 
-The autonomous experiment starts with 230 randomly placed agents in a 32 × 24 grid. Each chooses wait, move, copy or remove according to its group's fixed weights. These adjustable settings are illustrative, not calibrated biology; extinction is a valid outcome. It starts paused and keeps the final state visible after 500 ticks. Use `--mode demo` for the preserved five-tick scripted regression demonstration.
+The autonomous experiment starts with 230 randomly placed agents in a 32 × 24 grid. Each chooses wait, move, copy or repair according to its group's fixed weights. Upkeep and activity wear reduce integrity; repair restores it, and failure to maintain positive integrity removes the individual. Inspect condition and recorded failure causes alongside population changes. These adjustable settings are illustrative, not calibrated biology; continued survival and extinction are valid outcomes. It starts paused and keeps the final state visible after 500 ticks. Use `--survival random` with autonomous mode for the earlier random-removal comparison, or `--mode demo` for the five-tick scripted regression demonstration.
 
 Stop the server with **Ctrl+C in the terminal**; closing the browser does not stop the experiment. To repeat it, restart the command. An open page reconnects automatically, clears its old history and selection, and shows a new-experiment notice.
 

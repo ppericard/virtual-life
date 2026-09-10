@@ -28,3 +28,5 @@ footer { border-top: 1px solid #ccd7d0; padding-top: 18px; font-size: 12px; }
 @media (max-width: 760px) { main { padding: 24px 18px; }header { align-items: flex-start; gap: 10px; }.workspace { grid-template-columns: 1fr; gap: 20px; }.toolbar { gap: 14px; }.section-heading { flex-wrap: wrap; }h1 { max-width: 280px; }#status { padding: 6px 10px; }.buttons { flex-wrap: wrap; } }
 
 .group-row { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; align-items: center; margin: 10px 0; font-size: 12px; } .group-symbol { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 4px; color: white; font-weight: 700; } .group-count { font-size: 19px; font-variant-numeric: tabular-nums; } #configuration { overflow-wrap: anywhere; }
+
+#failure-list { max-height: 240px; overflow-y: auto; padding-left: 22px; font-size: 12px; } #failure-list li { margin: 10px 0; line-height: 1.5; } [hidden] { display: none !important; }

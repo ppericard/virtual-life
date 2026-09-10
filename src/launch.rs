@@ -6,7 +6,7 @@ use crate::{
 };
 use std::time::Duration;
 
-pub const OPTIONS: &str = "[--mode demo|autonomous] [--ticks N] [--width N] [--height N] [--occupancy 0..1] [--bundles W,M,C,R;...] [--proportions N,...] [--seed N]";
+pub const OPTIONS: &str = "[--mode demo|autonomous] [--survival wear-repair|random] [--ticks N] [--width N] [--height N] [--occupancy 0..1] [--bundles W,M,C,R;...] [--proportions N,...] [--seed N] [--integrity N] [--upkeep N] [--move-wear N] [--copy-wear N] [--repair N]\nAutonomous defaults to wear-repair: fourth weight is Repair (Remove in random mode). Integrity defaults to 10, upkeep 1, extra move/copy wear 1/2, gross repair 4. Maintenance settings require wear-repair; all use nonnegative u32 integers, integrity must be positive.";
 
 pub struct Launch {
     pub config: Config,
@@ -19,6 +19,9 @@ pub fn parse(arguments: impl IntoIterator<Item = String>, web: bool) -> Result<L
     let mut experiment = ExperimentConfig::default();
     let mut mode = "demo".to_owned();
     let mut model_options = false;
+    let mut maintenance_options = false;
+    let mut custom_bundles = false;
+    let mut survival = "wear-repair".to_owned();
     let mut ticks = None;
     let mut interval = None;
     let mut port = 7878;
@@ -45,6 +48,24 @@ pub fn parse(arguments: impl IntoIterator<Item = String>, web: bool) -> Result<L
         };
         match argument.as_str() {
             "--mode" => mode = value,
+            "--survival" => {
+                survival = value;
+                model_options = true;
+            }
+            "--integrity" | "--upkeep" | "--move-wear" | "--copy-wear" | "--repair" => {
+                let amount =
+                    u32::try_from(integer()?).map_err(|_| "maintenance values must fit u32")?;
+                let rules = experiment.maintenance.as_mut().unwrap();
+                match argument.as_str() {
+                    "--integrity" => rules.maximum = amount,
+                    "--upkeep" => rules.upkeep = amount,
+                    "--move-wear" => rules.move_wear = amount,
+                    "--copy-wear" => rules.copy_wear = amount,
+                    _ => rules.repair = amount,
+                }
+                model_options = true;
+                maintenance_options = true;
+            }
             "--ticks" => ticks = Some(integer()?),
             "--width" | "--height" => {
                 let dimension = usize::try_from(integer()?).map_err(|_| "dimension overflow")?;
@@ -81,11 +102,12 @@ pub fn parse(arguments: impl IntoIterator<Item = String>, web: bool) -> Result<L
                     .map(|bundle| {
                         let values = list(bundle)?;
                         Ok(Weights(values.try_into().map_err(
-                            |_| "each bundle needs wait,move,copy,remove weights",
+                            |_| "each bundle needs wait,move,copy and repair/remove weights",
                         )?))
                     })
                     .collect::<Result<_, String>>()?;
                 model_options = true;
+                custom_bundles = true;
             }
             "--proportions" => {
                 experiment.proportions = list(&value)?;
@@ -105,6 +127,19 @@ pub fn parse(arguments: impl IntoIterator<Item = String>, web: bool) -> Result<L
     }
     match mode.as_str() {
         "autonomous" => {
+            match survival.as_str() {
+                "wear-repair" => {}
+                "random" if maintenance_options => {
+                    return Err("maintenance options require wear-repair survival".into());
+                }
+                "random" => {
+                    experiment.maintenance = None;
+                    if !custom_bundles {
+                        experiment.bundles = ExperimentConfig::random().bundles;
+                    }
+                }
+                _ => return Err("survival must be wear-repair or random".into()),
+            }
             experiment.initialize()?;
             config.experiment = Some(experiment);
             config.ticks = 500;
@@ -152,6 +187,22 @@ pub fn describe(config: &Config) -> Result<(), String> {
             experiment.seed,
             env!("CARGO_PKG_VERSION")
         );
+        println!(
+            "survival={} protocol={} fourth_action={}",
+            experiment.survival(),
+            experiment.protocol(),
+            if experiment.maintenance.is_some() {
+                "repair"
+            } else {
+                "remove"
+            }
+        );
+        if let Some(rules) = experiment.maintenance {
+            println!(
+                "integrity={} upkeep={} move_wear={} copy_wear={} repair={}; initial and newborn integrity use the maximum",
+                rules.maximum, rules.upkeep, rules.move_wear, rules.copy_wear, rules.repair
+            );
+        }
         println!(
             "width={} height={} occupancy={}.{:06} ticks={} initial_count={}",
             experiment.width,

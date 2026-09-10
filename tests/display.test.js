@@ -2,6 +2,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { HISTORY_LIMIT, recordSample, sampleDescription, inspectionText, groupColor, groupLabel } from '../web/display.js';
 
+test('inspection reports integrity and engine failure evidence without inventing a cause', () => {
+  const sample={width:3,tick:'4',experiment:{maintenance:{maximum:10}},cells:[{id:'1',group:0,weights:[2,4,1,3],integrity:6}],failure_history:{discarded:'0',records:[]}};
+  assert.match(inspectionText(sample,'1'),/copy, repair.*Integrity 6\/10/);
+  sample.cells=[null];
+  assert.match(inspectionText(sample,'1'),/No failure record available/);
+  sample.failure_history.records=[{id:'1',tick:'3',position:{x:1,y:2},reason:'move wear',integrity_before:2,upkeep:1,action_wear:1}];
+  assert.match(inspectionText(sample,'1'),/failed at tick 3.*move wear.*starting integrity 2.*upkeep 1.*extra wear 1/);
+  sample.failure_history={discarded:'200',records:[]};
+  assert.match(inspectionText(sample,'1'),/record has been discarded.*200/);
+});
+
 test('history stays bounded, deduplicates ticks, and does not fabricate missed samples', () => {
   const points=[];
   for(let tick=0;tick<300;tick++) recordSample(points,{tick:String(tick*2),count:'3'});

@@ -8,13 +8,26 @@ export const groupColor = index => groupColors[index % groupColors.length];
 const groupInk = index => [4, 5, 7].includes(index) ? '#203333' : '#ffffff';
 export const groupLabel = index => index < 26 ? String.fromCharCode(65 + index) : `G${index + 1}`;
 
+export function failureText(failure) {
+  return `Agent ${failure.id} failed at tick ${failure.tick} · ${failure.reason} · Position (${failure.position.x}, ${failure.position.y}) · starting integrity ${failure.integrity_before}, upkeep ${failure.upkeep}, extra wear ${failure.action_wear}.`;
+}
+
 export function inspectionText(sample, selected) {
   if (!selected) return 'Select an occupied square or choose an agent above.';
   const index = sample.cells.findIndex(agent => agent?.id === selected);
-  if (index < 0) return `Agent ${selected} was removed by tick ${sample.tick}.`;
+  if (index < 0) {
+    if (sample.experiment?.maintenance) {
+      const history = sample.failure_history;
+      const failure = history?.records.find(record => record.id === selected);
+      if (failure) return failureText(failure);
+      return BigInt(history?.discarded ?? '0') > 0n ? `Agent ${selected} is absent; its failure record has been discarded from the bounded history (${history.discarded} older records discarded). Exact cause is unavailable.` : `Agent ${selected} is absent. No failure record available; no cause inferred.`;
+    }
+    return `Agent ${selected} was removed by tick ${sample.tick}.`;
+  }
   const agent = sample.cells[index];
-  const properties = sample.experiment ? `Group ${groupLabel(agent.group)} · Weights (wait, move, copy, remove): ${agent.weights.join(', ')}` : `Value ${agent.value}`;
-  return `ID ${agent.id} · ${properties} · Position (${index % sample.width}, ${Math.floor(index / sample.width)})`;
+  const properties = sample.experiment ? `Group ${groupLabel(agent.group)} · Weights (wait, move, copy, ${sample.experiment.maintenance ? 'repair' : 'remove'}): ${agent.weights.join(', ')}` : `Value ${agent.value}`;
+  const integrity = sample.experiment?.maintenance ? ` · Integrity ${agent.integrity}/${sample.experiment.maintenance.maximum}` : '';
+  return `ID ${agent.id} · ${properties} · Position (${index % sample.width}, ${Math.floor(index / sample.width)})${integrity}`;
 }
 
 export function renderReadouts(sample, selected, root = document) {
@@ -29,9 +42,22 @@ export function renderExperiment(sample) {
   document.getElementById('intro').textContent = sample.experiment ? 'An autonomous experiment. Shared properties, individual choices, synchronous ticks.' : 'Five scripted transitions. A test of the machinery, before autonomous rules.';
   const legend = document.getElementById('legend'); legend.replaceChildren();
   document.getElementById('experiment-settings').hidden = !sample.experiment;
+  document.getElementById('failure-evidence').hidden = !sample.experiment?.maintenance;
+  for (const element of document.querySelectorAll('.maintenance-measurement')) element.hidden = !sample.experiment?.maintenance;
   if (!sample.experiment) return;
   const info = sample.experiment;
-  document.getElementById('configuration').textContent = `Seed ${info.seed} · ${info.generator} · crate ${info.version} · occupancy ${info.occupancy} (rounded down to an exact count) · ${sample.end_tick} ticks. Illustrative settings, not calibrated biology.`;
+  document.getElementById('action-order').textContent = `Wait / move / copy / ${info.maintenance ? 'repair' : 'remove'}`;
+  const rules = info.maintenance;
+  const maintenance = rules ? ` Maximum, initial and newborn integrity ${rules.maximum}; upkeep ${rules.upkeep}; extra move/copy wear ${rules.move_wear}/${rules.copy_wear}; gross repair ${rules.repair}. Repair costs the action opportunity. Failed spatial attempts pay wear.` : ' Random removal comparison; no integrity.';
+  document.getElementById('configuration').textContent = `Seed ${info.seed} · ${info.generator} · crate ${info.version} · ${info.protocol} · occupancy ${info.occupancy} (rounded down to an exact count) · ${sample.end_tick} ticks.${maintenance} Illustrative settings, not calibrated biology.`;
+  if (rules) {
+    const history = sample.failure_history;
+    document.getElementById('failure-summary').textContent = `${sample.totals.failures} cumulative failures. ${history.records.length} retained engine records (latest ${history.limit}); ${history.discarded} older records discarded. Recorded on every tick, independently of plot sampling.${history.records.length ? '' : ' No failures recorded yet.'}`;
+    const list = document.getElementById('failure-list'); list.replaceChildren();
+    for (const failure of [...history.records].reverse()) {
+      const item = document.createElement('li'); item.textContent = failureText(failure); list.append(item);
+    }
+  }
   info.groups.forEach((group, index) => {
     const row = document.createElement('div'); row.className = 'group-row'; row.dataset.group = String(index);
     const swatch = document.createElement('span'); swatch.className = 'group-symbol'; swatch.style.backgroundColor = groupColor(index); swatch.style.color = groupInk(index); swatch.textContent = groupLabel(index);

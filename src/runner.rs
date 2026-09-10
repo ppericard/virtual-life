@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use crate::{
     demo,
-    engine::{Agent, Events, World},
+    engine::{Agent, Events, Failure, World},
     experiment::{self, ExperimentConfig, ExperimentInfo, Random},
 };
 
@@ -35,6 +35,8 @@ pub struct Snapshot {
     pub status: Status,
     pub end_tick: u64,
     pub experiment: Option<Arc<ExperimentInfo>>,
+    pub failures: Vec<Failure>,
+    pub discarded_failures: u64,
 }
 
 impl Snapshot {
@@ -54,6 +56,8 @@ impl Snapshot {
             status,
             end_tick,
             experiment: experiment.clone(),
+            failures: world.failures().iter().copied().collect(),
+            discarded_failures: world.discarded_failures(),
         }
     }
 }

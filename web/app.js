@@ -17,7 +17,8 @@ function render() {
   const selector = byId('agent');
   selector.replaceChildren(new Option('Choose an agent', ''));
   for (const agent of sample.cells.filter(Boolean)) selector.add(new Option(`ID ${agent.id} · ${sample.experiment ? `Group ${groupLabel(agent.group)}` : `Value ${agent.value}`}`, agent.id));
-  if (selected && !sample.cells.some(agent => agent?.id === selected)) selector.add(new Option(`ID ${selected} · removed`, selected));
+  if (sample.experiment?.maintenance) for (const failure of sample.failure_history.records) selector.add(new Option(`ID ${failure.id} · failed: ${failure.reason}`, failure.id));
+  if (selected && ![...selector.options].some(option => option.value === selected)) selector.add(new Option(`ID ${selected} · removed`, selected));
   selector.value = selected;
   drawGrid(byId('grid'), sample, selected);
   drawPlot(byId('plot'), history);

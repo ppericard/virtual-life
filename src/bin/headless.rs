@@ -25,8 +25,13 @@ fn run() -> Result<(), String> {
     println!("tick={} count={}", world.tick(), world.count());
     let events = world.totals();
     println!(
-        "accepted: moves={} creations={} removals={} value_changes={}",
-        events.moves, events.creations, events.removals, events.value_changes
+        "accepted: moves={} creations={} removals={} value_changes={} repairs={} failures={}",
+        events.moves,
+        events.creations,
+        events.removals,
+        events.value_changes,
+        events.repairs,
+        events.failures
     );
     if let Some(info) = &info {
         for (index, count) in info.counts(world.cells()).iter().enumerate() {
@@ -45,7 +50,30 @@ fn run() -> Result<(), String> {
             if info.is_some() {
                 print!(" weights={:?}", agent.weights.0);
             }
+            if let Some(rules) = world.maintenance() {
+                print!(" integrity={}/{}", agent.integrity, rules.maximum);
+            }
             println!();
+        }
+    }
+    if world.maintenance().is_some() {
+        println!(
+            "recent_failures={} discarded_failures={} (latest 128 engine outcomes; independent of observation)",
+            world.failures().len(),
+            world.discarded_failures()
+        );
+        for failure in world.failures() {
+            println!(
+                "failure: id={} tick={} at=({},{}) reason={} integrity_before={} upkeep={} action_wear={}",
+                failure.id,
+                failure.tick,
+                failure.position.x,
+                failure.position.y,
+                failure.reason.label(),
+                failure.integrity_before,
+                failure.upkeep,
+                failure.action_wear
+            );
         }
     }
     Ok(())

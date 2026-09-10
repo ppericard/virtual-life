@@ -1,5 +1,5 @@
 //! Reproducible initialisation and action choice. Resolution stays in World::step.
-use crate::engine::{Action, Agent, Position, Proposal, Weights, World};
+use crate::engine::{Action, Agent, Maintenance, Position, Proposal, Weights, World};
 
 pub const GENERATOR: &str = "SplitMix64 / VirtualLife sampling v1";
 // Vigna's 2015 public-domain reference: https://prng.di.unimi.it/splitmix64.c
@@ -14,6 +14,7 @@ pub struct ExperimentConfig {
     pub bundles: Vec<Weights>,
     pub proportions: Vec<u32>,
     pub seed: u64,
+    pub maintenance: Option<Maintenance>,
 }
 
 impl Default for ExperimentConfig {
@@ -23,13 +24,14 @@ impl Default for ExperimentConfig {
             height: 24,
             occupancy: 300_000,
             bundles: vec![
-                Weights([4, 5, 1, 1]),
-                Weights([4, 3, 2, 1]),
-                Weights([6, 2, 1, 1]),
-                Weights([2, 6, 2, 1]),
+                Weights([2, 4, 1, 3]),
+                Weights([2, 2, 2, 4]),
+                Weights([4, 1, 1, 4]),
+                Weights([1, 5, 2, 2]),
             ],
             proportions: vec![1; 4],
             seed: 1,
+            maintenance: Some(Maintenance::default()),
         }
     }
 }
@@ -93,7 +95,38 @@ impl Random {
 }
 
 impl ExperimentConfig {
+    pub fn random() -> Self {
+        Self {
+            bundles: vec![
+                Weights([4, 5, 1, 1]),
+                Weights([4, 3, 2, 1]),
+                Weights([6, 2, 1, 1]),
+                Weights([2, 6, 2, 1]),
+            ],
+            maintenance: None,
+            ..Self::default()
+        }
+    }
+
+    pub fn survival(&self) -> &'static str {
+        if self.maintenance.is_some() {
+            "wear-repair"
+        } else {
+            "random"
+        }
+    }
+    pub fn protocol(&self) -> &'static str {
+        if self.maintenance.is_some() {
+            "wear-repair v1"
+        } else {
+            "random v1"
+        }
+    }
+
     pub fn initialize(&self) -> Result<(World, Random, ExperimentInfo), String> {
+        if let Some(rules) = self.maintenance {
+            rules.validate()?;
+        }
         let size = self
             .width
             .checked_mul(self.height)
@@ -178,12 +211,16 @@ impl ExperimentConfig {
                         id: index as u64 + 1,
                         value: 0,
                         weights,
+                        integrity: self.maintenance.map_or(0, |rules| rules.maximum),
                     },
                 )
             })
             .collect();
         Ok((
-            World::new(self.width, self.height, &agents)?,
+            match self.maintenance {
+                Some(rules) => World::with_maintenance(self.width, self.height, &agents, rules)?,
+                None => World::new(self.width, self.height, &agents)?,
+            },
             random,
             ExperimentInfo {
                 config: self.clone(),
@@ -203,6 +240,12 @@ pub fn proposals(world: &World, random: &mut Random) -> Vec<Proposal> {
         .enumerate()
         .filter_map(|(index, cell)| {
             let agent = (*cell)?;
+            if world
+                .maintenance()
+                .is_some_and(|rules| agent.integrity <= rules.upkeep)
+            {
+                return None; // Upkeep failure is resolved before action choice; no draw.
+            }
             let total: u64 = agent
                 .weights
                 .0
@@ -234,6 +277,7 @@ pub fn proposals(world: &World, random: &mut Random) -> Vec<Proposal> {
                         Action::Create(target)
                     }
                 }
+                _ if world.maintenance().is_some() => Action::Repair,
                 _ => Action::Remove,
             };
             Some(Proposal::new(agent.id, action))

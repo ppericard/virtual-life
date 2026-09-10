@@ -8,8 +8,93 @@ async function save(page, info, name) {
   await info.attach(name,{path:file,contentType:'image/png'});
 }
 
+test.describe('wear and repair default experiment', () => {
+  test.use({serverArgs:['--mode','autonomous','--width','8','--height','6','--ticks','80','--tick-ms','0']});
+  test('live integrity recovers, properties remain stable and completion keeps failure evidence', async ({page,server},info) => {
+    await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
+    await expect(page.locator('#action-order')).toHaveText('Wait / move / copy / repair');
+    await expect(page.locator('#configuration')).toContainText('Maximum, initial and newborn integrity 10');
+    let previous=await snapshot(page,server);
+    expect(previous.experiment.survival).toBe('wear-repair');
+    expect(previous.experiment.groups.map(g=>g.weights)).toEqual([[2,4,1,3],[2,2,2,4],[4,1,1,4],[1,5,2,2]]);
+    const selected=previous.cells.find(Boolean); await page.locator('#agent').selectOption(selected.id);
+    await expect(page.locator('#inspection')).toContainText('Integrity 10/10');
+    await save(page,info,'wear-repair-initial');
+    let recovered=false;
+    for(let tick=1;tick<=10;tick++) {
+      await page.getByRole('button',{name:'Single step'}).click(); await expect(page.locator('#tick')).toHaveText(String(tick));
+      const current=await snapshot(page,server);
+      const recovering=current.cells.filter(Boolean).find(agent=>previous.cells.some(old=>old?.id===agent.id && old.integrity<agent.integrity));
+      if(recovering&&!recovered) {
+        await page.locator('#agent').selectOption(recovering.id);
+        await expect(page.locator('#inspection')).toContainText(`Integrity ${recovering.integrity}/10`);
+        expect(previous.cells.find(agent=>agent?.id===recovering.id).weights).toEqual(recovering.weights);
+        await save(page,info,'wear-repair-recovery'); recovered=true;
+      }
+      previous=current;
+    }
+    expect(recovered).toBe(true); expect(Number(previous.totals.repairs)).toBeGreaterThan(0);
+    await page.getByRole('button',{name:'Resume',exact:true}).click(); await expect(page.getByRole('status')).toHaveText('completed');
+    const final=await snapshot(page,server);
+    expect(final.experiment.groups.reduce((n,g)=>n+Number(g.count),0)).toBe(Number(final.count));
+    expect(final.failure_history.records.length).toBeLessThanOrEqual(128);
+    expect(Number(final.failure_history.discarded)+final.failure_history.records.length).toBe(Number(final.totals.failures));
+    const failure=final.failure_history.records.at(-1);
+    expect(failure).toBeTruthy(); await page.locator('#agent').selectOption(failure.id);
+    await expect(page.locator('#inspection')).toContainText(`failed at tick ${failure.tick} · ${failure.reason}`);
+    await save(page,info,'wear-repair-completed');
+    await page.setViewportSize({width:390,height:950});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+    await expect(page.locator('#inspection')).toBeVisible();
+    await save(page,info,'wear-repair-narrow');
+    await page.reload(); await expect(page.getByRole('status')).toHaveText('completed');
+    await expect(page.locator('#failure-summary')).toContainText(`${final.totals.failures} cumulative failures`);
+    await expect(page.locator('#samples')).toContainText('Observed ticks: 80.');
+    await server.restart(); await expect(page.locator('#run-message')).toContainText('New experiment connected');
+    await expect(page.locator('#tick')).toHaveText('0'); await expect(page.locator('#agent')).toHaveValue('');
+    await expect(page.locator('#failure-summary')).toContainText('0 cumulative failures');
+    await expect(page.getByRole('status')).toHaveText('paused');
+  });
+});
+
+test.describe('exact upkeep failure evidence', () => {
+  test.use({serverArgs:['--mode','autonomous','--width','3','--height','3','--occupancy','1','--bundles','1,0,0,0','--proportions','1','--integrity','3','--ticks','3']});
+  test('selected individual shows exact-zero upkeep failure at completion', async ({page,server},info) => {
+    await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
+    await page.locator('#agent').selectOption('1');
+    for(let tick=1;tick<=2;tick++) {
+      await page.getByRole('button',{name:'Single step'}).click(); await expect(page.locator('#tick')).toHaveText(String(tick));
+      await expect(page.locator('#inspection')).toContainText(`Integrity ${3-tick}/3`);
+    }
+    await page.getByRole('button',{name:'Single step'}).click(); await expect(page.locator('#tick')).toHaveText('3');
+    await expect(page.locator('#inspection')).toHaveText('Agent 1 failed at tick 3 · upkeep · Position (0, 0) · starting integrity 1, upkeep 1, extra wear 0.');
+    const final=await snapshot(page,server); expect(final.count).toBe('0'); expect(final.totals.failures).toBe('9');
+    expect(final.failure_history.records.map(f=>f.id)).toEqual(['1','2','3','4','5','6','7','8','9']);
+    await save(page,info,'wear-repair-upkeep-failure');
+  });
+});
+
+test.describe('bounded failures independent of sampling', () => {
+  test.use({serverArgs:['--mode','autonomous','--width','20','--height','20','--occupancy','1','--integrity','1','--ticks','600','--sample-every','1000','--tick-ms','0']});
+  test('discarded causes are labelled while retained outcomes survive sparse observation', async ({page,server},info) => {
+    await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
+    await page.locator('#agent').selectOption('1');
+    await page.getByRole('button',{name:'Resume',exact:true}).click(); await expect(page.getByRole('status')).toHaveText('completed');
+    await expect(page.locator('#inspection')).toContainText('record has been discarded');
+    await expect(page.locator('#failure-summary')).toContainText('272 older records discarded');
+    const final=await snapshot(page,server);
+    expect(final.failure_history.records).toHaveLength(128); expect(final.failure_history.records[0].id).toBe('273');
+    expect(final.failure_history.records.every(f=>f.tick==='1'&&f.reason==='upkeep')).toBe(true);
+    await page.locator('#agent').selectOption('400'); await expect(page.locator('#inspection')).toContainText('failed at tick 1 · upkeep');
+    await expect(page.locator('#samples')).toContainText('not a complete recording');
+    await page.getByText('Recent failure records',{exact:true}).click();
+    await expect(page.locator('#failure-list li')).toHaveCount(128);
+    await save(page,info,'wear-repair-bounded-failures');
+  });
+});
+
 test.describe('autonomous visual experiment', () => {
-  test.use({serverArgs:['--mode','autonomous','--width','8','--height','6','--seed','1','--ticks','80','--tick-ms','25']});
+  test.use({serverArgs:['--mode','autonomous','--survival','random','--width','8','--height','6','--seed','1','--ticks','80','--tick-ms','25']});
   test('property colours, grid click, population trajectories and long completion', async ({page,server}, info) => {
     await page.goto(server.url);
     await expect(page.locator('#tick')).toHaveText('0');
@@ -69,7 +154,7 @@ test.describe('autonomous visual experiment', () => {
 });
 
 test.describe('canonical zero groups and extinction', () => {
-  test.use({serverArgs:['--mode','autonomous','--width','8','--height','6','--bundles','0,0,0,1;0,0,0,1;1,0,0,0;0,1,0,0','--proportions','1,1,0,0','--ticks','20','--tick-ms','0']});
+  test.use({serverArgs:['--mode','autonomous','--survival','random','--width','8','--height','6','--bundles','0,0,0,1;0,0,0,1;1,0,0,0;0,1,0,0','--proportions','1,1,0,0','--ticks','20','--tick-ms','0']});
   test('duplicate bundles aggregate and every extinct/zero series retains its label', async ({page,server},info) => {
     await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
     await expect(page.locator('#legend .group-row')).toHaveCount(3);
@@ -88,7 +173,7 @@ test.describe('canonical zero groups and extinction', () => {
 });
 
 test.describe('initially empty autonomous run', () => {
-  test.use({serverArgs:['--mode','autonomous','--occupancy','0','--ticks','600','--running','--tick-ms','0']});
+  test.use({serverArgs:['--mode','autonomous','--survival','random','--occupancy','0','--ticks','600','--running','--tick-ms','0']});
   test('empty completion retains configuration and all four zero series', async ({page,server}) => {
     await page.goto(server.url); await expect(page.getByRole('status')).toHaveText('completed');
     await expect(page.locator('#tick')).toHaveText('600'); await expect(page.locator('#count')).toHaveText('0');

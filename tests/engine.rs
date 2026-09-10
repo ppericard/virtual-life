@@ -101,7 +101,8 @@ fn complete_worked_example_matches_every_tick_and_event_total() {
             moves: 2,
             creations: 2,
             removals: 3,
-            value_changes: 2
+            value_changes: 2,
+            ..Events::default()
         }
     );
     assert_eq!(world.next_id(), 6);
@@ -505,7 +506,8 @@ fn exhaustive_small_rectangles_and_short_sequences_preserve_invariants() {
                             moves: previous.moves + accepted.moves,
                             creations: previous.creations + accepted.creations,
                             removals: previous.removals + accepted.removals,
-                            value_changes: previous.value_changes + accepted.value_changes
+                            value_changes: previous.value_changes + accepted.value_changes,
+                            ..Events::default()
                         },
                         "{context}"
                     );

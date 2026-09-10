@@ -1,6 +1,6 @@
 # VirtualLife — model and examples
 
-**Model status:** Option A is the approved first autonomous experiment. Four default property bundles drive random individual choices; the scripted fixture remains regression coverage. Neither is evidence of biological realism or emergence. The browser is the selected interface. See [README](README.md) for the project overview and run instructions, and [the development reference](docs/development.md#verification) for checks; this document records rules, their rationale and open model choices.
+**Model status:** the approved autonomous default is the wear-and-repair experiment below. Four property bundles drive individual choices; survival follows integrity and operating history. The earlier random-removal Option A and scripted fixture remain available for comparison and regression coverage. None is evidence of biological realism or emergence. See [README](README.md) for the overview and [the development reference](docs/development.md#verification) for usage and checks.
 
 ## Confirmed starting constraints
 
@@ -76,7 +76,47 @@ The native process owns the experiment. Refreshing, closing, hiding, or disconne
 
 **9 September 2026 — Option A (Pierre's decision):** implement the four-property-group autonomous experiment below. This supersedes issue #8's earlier identical-properties proposal and awaiting-model-choice wording. Neighbour-dependent behaviour is the immediate follow-up, but its rules require Pierre's next decision.
 
-## Option A: shared properties, autonomous choices
+## Wear and repair: survival through operating history
+
+**10 September 2026 — Pierre's decision:** replace a chosen random death with a small integrity/maintenance experiment, before adding neighbourhood or energy rules. Each individual has one mutable nonnegative integer `integrity`. All individuals share adjustable maximum/initial/newborn integrity, upkeep, extra move/copy wear and gross repair. Their species is the exact **Wait/Move/Copy/Repair weight tuple** within this shared rule; current integrity, ID, ancestry and position do not define a species. Identical bundles coalesce as before. Properties do not mutate during life.
+
+The default is `--survival wear-repair`, with maximum 10, upkeep 1, extra move wear 1, extra copy wear 2 and gross repair 4. The fourth choice is Repair, replacing Remove. Default bundles are A `(2,4,1,3)`, B `(2,2,2,4)`, C `(4,1,1,4)` and D `(1,5,2,2)`. The 32 × 24 grid, occupancy 0.3, equal proportions, seed 1 and 500-tick limit are unchanged. These are adjustable illustrative settings, not values tuned for coexistence or biological calibration.
+
+For every tick, validate all state, rules and proposals without mutation. An individual with `integrity <= upkeep` fails maintenance and is removed before choosing or performing any action. It cannot repair itself in that tick. Otherwise it pays upkeep and chooses one weighted action using the common policy:
+
+- **Wait:** no further change; upkeep has still been paid.
+- **Move or Copy:** draw uniformly among all eight neighbours, before checking affordability or occupancy. If integrity after upkeep is less than or equal to the extra wear, the individual fails before the spatial action. It makes no claim, creates no child and allocates no ID. Otherwise charge the wear, even when occupancy or competing claims subsequently reject the destination. There are no retries.
+- **Repair:** use the entire action opportunity to add gross repair after upkeep, capped at the maximum. There is no material or energy cost yet. Count one repair when integrity actually increases relative to its value after upkeep; a capped repair with a positive restoration still counts if it restores upkeep loss.
+
+Only affordable move/copy attempts claim destinations. All claims still use the unchanged starting grid: competing affordable claims all fail, including mixed move/copy claims. A square vacated by failure remains start-occupied and unavailable until the next tick. Normal wrapping, single occupancy, stable IDs and row-major creation-ID allocation remain unchanged. Integrity updates, spatial outcomes, IDs, events and failure evidence commit atomically; invalid input or exhausted counters leave both buffers and all state unchanged.
+
+A successful copy inherits the parent's weight tuple, receives a fresh ID and starts at shared maximum integrity. The parent pays upkeep and copy wear and retains its ID. The newborn first acts next tick. This is a fresh functional condition, **not an energy-conservation model**; there is no energy or material account to duplicate. Initial individuals also start at maximum integrity.
+
+### Worked conditions and boundaries
+
+| Starting integrity and choice | Default result |
+| --- | --- |
+| 10, Move to an eligible unclaimed neighbour | 8: pay 1 upkeep and 1 movement wear |
+| 8, another Move | 6 |
+| 6, Repair | 9: pay 1, then restore 4 |
+| 9, Repair | 10: restoration is capped |
+| 10, Copy rejected by occupancy or another claim | Parent 7; no child and no new ID |
+| 10, successful Copy | Parent 7; child 10, inactive until the following tick |
+| 2, Move | Upkeep leaves 1; extra wear 1 would leave zero, so remove before claiming |
+| 3, Copy | Upkeep leaves 2; extra wear 2 would leave zero, so remove before claiming |
+| 1, Repair | Upkeep failure; no repair occurs |
+
+Maximum must be positive. Costs/restoration may be zero and may exceed the maximum; arithmetic uses wider integers or comparisons before subtraction. There is no survivor at integrity zero. There is no lifespan draw, age limit, random death choice, inactivity penalty, hidden balancing or reseeding. Sufficient repair can sustain an individual indefinitely; zero upkeep/costs can also permit persistence. Extinction and continued survival are both valid, and the finite run limit remains independent of either outcome.
+
+### Failure evidence and reproducibility
+
+Every failure has an engine-recorded cause: **upkeep**, **move wear** or **copy wear**. Records include ID, resulting tick, starting position, starting integrity, upkeep and selected extra wear (zero when upkeep failed first). Each run retains the latest 128 records in tick then starting-square order, counts discarded older records, and retains cumulative repairs/failures. This evidence is recorded on every simulation tick independently of viewers or sample cadence; it is bounded causal evidence, not a complete event journal. Inspection can report a selected individual's retained failure or state that its record has been discarded. Plot gaps do not fabricate events. Reconnection retains the same run's server evidence; a new experiment clears it.
+
+Initialization and bounded random draws use the SplitMix64 procedure below. The **wear-repair v1** policy scans occupied starting squares in row-major order, skips all random draws for individuals unable to survive upkeep, then draws one weighted action for every survivor. Move/Copy always draws one neighbour (plus any raw rejection draws), including unaffordable attempts. Wait/Repair draws no destination. Integrity costs and repair consume no random draws. This protocol differs from the earlier random-removal policy; record the survival setting and protocol as well as configuration, seed and source version.
+
+## Option A comparison: random removal
+
+Select `--survival random` to run the earlier approved Option A, without integrity or repair. Its original default bundles and random draw/iteration order are preserved; the same baseline configuration still produces the earlier fixed-tick results. Maintenance overrides are rejected for this mode. The scripted `--mode demo` remains independent of both autonomous policies.
 
 A species is the exact tuple of four nonnegative integer weights: **wait, move, copy, remove**. At least one weight must be positive. Individuals with identical tuples belong to one group, regardless of labels, IDs, positions or ancestry. `(1,1,0,0)` and `(2,2,0,0)` are distinct bundles despite having equal action probabilities; grouping compares actual properties, not normalized probabilities. Labels A–D, colours and symbols are presentation only. The implementation supports one to eight distinct bundles; four is the default experiment, not four action implementations.
 
@@ -88,7 +128,7 @@ Removal is a random selected action, **not ageing or an inactivity penalty**. No
 
 ### Illustrative initial settings
 
-The default autonomous world is 32 × 24, occupancy 0.3, four equal initial proportions, seed 1 and 500 ticks. Default bundles are A `(4,5,1,1)`, B `(4,3,2,1)`, C `(6,2,1,1)` and D `(2,6,2,1)`. These are adjustable experimental settings, **not scientifically calibrated values**. They illustrate different tendencies; no hidden mechanism tunes a winner or maintains coexistence.
+The random-removal comparison defaults to 32 × 24, occupancy 0.3, four equal initial proportions, seed 1 and 500 ticks. Its bundles are A `(4,5,1,1)`, B `(4,3,2,1)`, C `(6,2,1,1)` and D `(2,6,2,1)`. These are adjustable experimental settings, **not scientifically calibrated values**. They illustrate different tendencies; no hidden mechanism tunes a winner or maintains coexistence. Both autonomous modes share the following initialization procedure.
 
 Occupancy specifies an **exact total**, rounded down: `floor(width × height × occupancy)`. For 768 squares and 0.3, place 230 agents. Initial proportions are nonnegative integer ratios. First combine proportions of identical bundles in first-appearance order. Allocate each group's exact quota by rounding down, then give the leftover individuals to the largest fractional remainders, breaking ties by that canonical group order. Equal ratios therefore yield 58, 58, 57, 57 agents. Zero ratios produce zero initial agents and remain visible; the total ratio must be positive even on an empty grid. The actual canonical groups, ratios and initial counts are recorded in browser and headless output.
 
@@ -96,7 +136,7 @@ Shuffle all row-major square indices with descending Fisher–Yates; assign succ
 
 ### Reproducibility contract
 
-The generator is **SplitMix64**, using [Vigna's public-domain 2015 reference](https://prng.di.unimi.it/splitmix64.c), with the explicit `VirtualLife sampling v1` draw protocol in `src/experiment.rs`. Seed is the initial unsigned 64-bit state. Each raw draw adds `0x9e3779b97f4a7c15` with wrapping arithmetic, then mixes with shifts 30/27/31 and multipliers `0xbf58476d1ce4e5b9` and `0x94d049bb133111eb`. Reference output vectors are tested. This generator is for reproducible experiments, not security.
+The generator is **SplitMix64**, using [Vigna's public-domain 2015 reference](https://prng.di.unimi.it/splitmix64.c), with `VirtualLife sampling v1` bounded draws in `src/experiment.rs`. The original action protocol is separately labelled **random v1**. Seed is the initial unsigned 64-bit state. Each raw draw adds `0x9e3779b97f4a7c15` with wrapping arithmetic, then mixes with shifts 30/27/31 and multipliers `0xbf58476d1ce4e5b9` and `0x94d049bb133111eb`. Reference output vectors are tested. This generator is for reproducible experiments, not security.
 
 To draw uniformly below N, discard raw values below `(-N modulo 2^64) modulo N`, then return the accepted value modulo N. Rejected raw values advance the generator. This avoids remainder bias. Initialization draws once per Fisher–Yates iteration (plus any rejected raw values), from the last square through index 1, even for an empty population. Quota calculation and ID allocation consume no randomness. The same generator then continues into ticks. Iterate occupied starting squares in row-major order: draw one weighted action per individual, then draw a destination only for move/copy. Neighbours have the stable order northwest, north, northeast, west, east, southwest, south, southeast, with wraparound. Failed destinations never retry and still consume their original draws. Newborns enter only the next tick's iteration.
 
@@ -106,4 +146,4 @@ Record the seed, effective configuration, generator/protocol name and crate vers
 
 Action selection is a separate function receiving the read-only starting `World`; it can already read each individual's position and the eight neighbours' actual properties through `neighbors` and `agent_at`. Transition resolution and presentation do not need duplicate implementations. No neighbourhood framework or interaction matrix is introduced.
 
-A small next proposal for Pierre is **crowding-sensitive copy selection**: after an individual draws Copy, let it wait instead when all eight starting neighbours are occupied. This makes local information explicit without changing successful outcomes, but changes destination draw consumption and therefore later random trajectories; it also adds little observable behaviour because the engine already rejects occupied targets. A more informative alternative is to scale copy tendency with the number of empty neighbours before drawing the action; that changes copy probabilities and population dynamics and needs an explicit formula and worked examples. Neither rule is selected or implemented. Choose the question and exact rule before that next increment.
+Neighbour-dependent choices remain the immediate model follow-up. Wear and repair adds no neighbour-property-dependent action selection, resources, energy economy, mutation or interaction matrix. Choose the question and exact local rule with worked examples before that next increment.
