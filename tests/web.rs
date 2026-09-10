@@ -245,10 +245,10 @@ fn preset_restart_retains_current_bundles_for_seed_only_replay() {
         old["experiment"]["maintenance"]
     );
     let bundles = vec![
-        Weights([34, 4, 12, 30]),
-        Weights([26, 10, 12, 32]),
-        Weights([18, 16, 12, 34]),
-        Weights([10, 22, 12, 36]),
+        Weights([42, 4, 4, 30]),
+        Weights([34, 10, 4, 32]),
+        Weights([26, 16, 4, 34]),
+        Weights([18, 22, 4, 36]),
     ];
     let expected = ExperimentConfig {
         width: 8,
@@ -332,30 +332,30 @@ fn every_preset_matches_ordinary_initialization_and_fixed_ticks_with_custom_sett
             "moderate-movement",
             "Moderate movement",
             [
-                [34, 4, 12, 30],
-                [26, 10, 12, 32],
-                [18, 16, 12, 34],
-                [10, 22, 12, 36],
+                [42, 4, 4, 30],
+                [34, 10, 4, 32],
+                [26, 16, 4, 34],
+                [18, 22, 4, 36],
             ],
         ),
         (
             "wide-movement-range",
             "Wide movement range",
             [
-                [34, 4, 12, 30],
-                [23, 12, 12, 33],
-                [12, 20, 12, 36],
-                [1, 28, 12, 39],
+                [42, 4, 4, 30],
+                [31, 12, 4, 33],
+                [20, 20, 4, 36],
+                [9, 28, 4, 39],
             ],
         ),
         (
             "lower-copying",
             "Lower copying",
             [
-                [38, 4, 8, 30],
-                [27, 12, 8, 33],
-                [16, 20, 8, 36],
-                [5, 28, 8, 39],
+                [44, 4, 2, 30],
+                [33, 12, 2, 33],
+                [22, 20, 2, 36],
+                [11, 28, 2, 39],
             ],
         ),
     ];
@@ -436,6 +436,37 @@ fn every_preset_matches_ordinary_initialization_and_fixed_ticks_with_custom_sett
         assert_eq!(parsed(&replay), (200, random_state));
         run = identity(&replay);
     }
+}
+
+#[test]
+fn old_moderate_preset_bundles_remain_custom_and_replay_without_migration() {
+    use virtual_life::{engine::Weights, experiment::ExperimentConfig};
+    let server = Server::start(Config {
+        ticks: 1,
+        experiment: Some(ExperimentConfig {
+            width: 8,
+            height: 6,
+            occupancy: 500_000,
+            bundles: vec![
+                Weights([34, 4, 12, 30]),
+                Weights([26, 10, 12, 32]),
+                Weights([18, 16, 12, 34]),
+                Weights([10, 22, 12, 36]),
+            ],
+            proportions: vec![1; 4],
+            seed: 42,
+            ..Default::default()
+        }),
+        ..Config::default()
+    });
+    let (run, initial) = server.identified_snapshot();
+    assert!(initial["experiment"]["preset"].is_null());
+    assert_eq!(server.control("step").0, 200);
+    server.until("1", "completed");
+    let replay = server.restart(&run, r#"{"seed":"42"}"#);
+    assert_ne!(identity(&replay), run);
+    // The entire initial state, including custom weights/proportions and label, survives replay.
+    assert_eq!(parsed(&replay), (200, initial));
 }
 
 #[test]

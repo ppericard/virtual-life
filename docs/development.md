@@ -94,12 +94,20 @@ Restart bodies must be JSON objects with exactly one digit-only decimal seed str
 
 The only optional restart field is a nonempty `preset` string from the following catalog. Unknown IDs/fields, duplicate fields, nulls, arrays and wrong types are rejected with 400. Preset requests in demo or random-removal mode return 409; they never switch survival policy. All existing origin, body-size and run-precondition checks also apply. Omitting `preset` retains the current effective bundles/proportions, including after a prior preset restart; it does not restore the original CLI bundles.
 
-| Preset ID | Browser name |
-|---|---|
-| `original` | Original |
-| `moderate-movement` | Moderate movement |
-| `wide-movement-range` | Wide movement range |
-| `lower-copying` | Lower copying |
+| Preset ID | Browser name | Ordered Wait/Move/Copy/Repair tuples (A; B; C; D) |
+|---|---|---|
+| `original` | Original | `(2,4,1,3); (2,2,2,4); (4,1,1,4); (1,5,2,2)` |
+| `moderate-movement` | Moderate movement | `(42,4,4,30); (34,10,4,32); (26,16,4,34); (18,22,4,36)` |
+| `wide-movement-range` | Wide movement range | `(42,4,4,30); (31,12,4,33); (20,20,4,36); (9,28,4,39)` |
+| `lower-copying` | Lower copying | `(44,4,2,30); (33,12,2,33); (22,20,2,36); (11,28,2,39)` |
+
+All presets use proportions `1,1,1,1`. Moderate and Wide have a 5% base Copy chance; Lower copying has 2.5%. These three presets transfer reduced Copy weight to Wait, preserving Move/Repair weights and each tuple's total of 80. Crowding multiplies the base Copy chance by the fraction of empty starting neighbours; it does not change the inherited tuple. Original and CLI defaults are unchanged. The choices do not guarantee a particular density, equilibrium or coexistence.
+
+Preset IDs and names remain stable while their tuples can change between revisions. Older preset tuples remain valid custom configurations; they are not relabelled or migrated, and seed-only restart preserves them. A seed plus preset name alone is insufficient for reproduction across revisions: retain the exact tuples, proportions, other settings, source commit and Cargo.lock. For example, this runs the current Lower copying tuples explicitly without relying on its browser name:
+
+```sh
+cargo run --locked --no-default-features --bin headless -- --mode autonomous --survival wear-repair --width 64 --height 48 --occupancy 0.05 --bundles "44,4,2,30;33,12,2,33;22,20,2,36;11,28,2,39" --proportions 1,1,1,1 --integrity 10 --upkeep 1 --crowding-threshold 5 --crowding-upkeep 1 --move-wear 1 --copy-wear 2 --repair 4 --seed 42 --ticks 5000
+```
 
 [The catalog](../src/web/presets.rs) supplies the names, descriptions, exact Wait/Move/Copy/Repair bundles and equal proportions. Wear-repair snapshots expose it as `experiment.presets`; each entry has `id`, `name`, `description`, `bundles` and `proportions`. `experiment.preset` is the matching ID only when the ordered canonical weights and integer proportions exactly match an entry; otherwise it is null and the browser labels the settings custom. Both fields are null in random-removal mode. Preset metadata is derived from configuration, never agent identity or population counts. No arbitrary bundle-editing API is exposed.
 

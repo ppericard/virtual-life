@@ -19,6 +19,11 @@ test('preset choices stay pending until restart and synchronize both pages to th
   for (const name of ['Original', 'Moderate movement', 'Wide movement range', 'Lower copying']) {
     await expect(page.getByRole('button', {name, exact: true})).toBeVisible();
   }
+  for (const name of ['Moderate movement', 'Wide movement range']) {
+    await expect(page.getByRole('button', {name, exact: true})).toContainText('5% base Copy chance');
+  }
+  await expect(page.getByRole('button', {name: 'Lower copying', exact: true})).toContainText('2.5% base Copy chance');
+  await expect(page.locator('#preset-controls')).toContainText('Crowding lowers the base Copy chance further.');
   await page.locator('#step').click(); await expect(page.locator('#tick')).toHaveText('1');
   const first = await read(page, server);
   const agent = first.sample.cells.find(Boolean).id;
@@ -70,11 +75,14 @@ test('preset choices stay pending until restart and synchronize both pages to th
   expect(after.run).not.toBe(before.run);
   expect(after.sample.experiment.seed).toBe('18446744073709551615');
   expect(after.sample.experiment.preset).toBe('moderate-movement');
+  expect(after.sample.experiment.groups.map(group => group.weights)).toEqual([[42,4,4,30],[34,10,4,32],[26,16,4,34],[18,22,4,36]]);
   expect(after.sample.experiment.maintenance).toEqual(before.sample.experiment.maintenance);
   expect(writes).toBe(1);
   await page.reload();
   await expect(page.locator('#current-preset')).toHaveText('Current run: Moderate movement.');
   await expect(page.getByRole('button', {name: 'Moderate movement', exact: true})).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('#preset-controls summary').click();
+  await expect(page.locator('#preset-weights')).toContainText('A: 42 / 4 / 4 / 30 (proportion 1)');
   await page.setViewportSize({width:390, height:844});
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await save(page, info, 'preset-applied-narrow');
@@ -114,6 +122,9 @@ test.describe('custom preset recovery', () => {
     expect([random.width,random.height,random.end_tick,random.experiment.occupancy]).toEqual([9,7,'12','0.400000']);
     expect(random.experiment.maintenance).toEqual(before.sample.experiment.maintenance);
     expect(random.experiment.groups.map(group => group.proportion)).toEqual(['1','1','1','1']);
+    expect(random.experiment.groups.map(group => group.weights)).toEqual([[42,4,4,30],[31,12,4,33],[20,20,4,36],[9,28,4,39]]);
+    await expect(page.locator('#preset-weights')).toContainText('D: 9 / 28 / 4 / 39 (proportion 1)');
+    await save(page, info, 'preset-wide-movement-narrow');
     await expect(page.getByRole('button', {name:'Keep current custom settings', exact:true})).toHaveCount(0);
     await page.reload();
     await expect(page.locator('#current-preset')).toHaveText('Current run: Wide movement range.');
@@ -222,7 +233,7 @@ for (const kind of ['control','restart']) {
 
 test.describe('zero-tick preset run', () => {
   test.use({serverArgs:['--mode','autonomous','--ticks','0']});
-  test('a preset applied to a zero-tick run stays completed', async ({page,server}) => {
+  test('a preset applied to a zero-tick run stays completed', async ({page,server}, info) => {
     await page.goto(server.url); await expect(page.getByRole('status')).toHaveText('completed');
     await page.getByRole('button', {name:'Lower copying',exact:true}).click();
     await page.locator('#restart-seed').click();
@@ -230,7 +241,12 @@ test.describe('zero-tick preset run', () => {
     await expect(page.getByRole('status')).toHaveText('completed');
     await expect(page.locator('#tick')).toHaveText('0');
     for (const id of ['step','pause','resume']) await expect(page.locator(`#${id}`)).toBeDisabled();
-    expect((await read(page,server)).sample.experiment.preset).toBe('lower-copying');
+    const applied = (await read(page,server)).sample;
+    expect(applied.experiment.preset).toBe('lower-copying');
+    expect(applied.experiment.groups.map(group => group.weights)).toEqual([[44,4,2,30],[33,12,2,33],[22,20,2,36],[11,28,2,39]]);
+    await page.locator('#preset-controls summary').click();
+    await expect(page.locator('#preset-weights')).toContainText('A: 44 / 4 / 2 / 30 (proportion 1)');
+    await save(page, info, 'preset-lower-copying-wide');
   });
 });
 
