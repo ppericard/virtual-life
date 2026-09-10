@@ -591,6 +591,18 @@ mod tests {
 
     #[test]
     fn failed_restart_initialization_retains_an_usable_run_and_replacements_join_old_workers() {
+        let (done, finished) = mpsc::channel();
+        // Include every replacement, join and destructor in the deadlock guard.
+        thread::spawn(move || {
+            check_restart_initialization_and_cleanup();
+            let _ = done.send(());
+        });
+        finished
+            .recv_timeout(Duration::from_secs(10))
+            .expect("restart initialization and cleanup exceeded deadlock guard");
+    }
+
+    fn check_restart_initialization_and_cleanup() {
         let mut api = autonomous_api();
         let initial = api.current.lock().unwrap().clone();
         let headers = precondition(&api);
@@ -636,8 +648,25 @@ mod tests {
             .unwrap();
     }
 
-    #[tokio::test]
-    async fn retained_http_snapshots_and_control_receipts_keep_their_old_identity_after_restart() {
+    #[test]
+    fn retained_http_snapshots_and_control_receipts_keep_their_old_identity_after_restart() {
+        let (done, finished) = mpsc::channel();
+        // Runtime teardown can wait for blocking tasks, so guard it along with
+        // the response checks and all worker/collector cleanup.
+        thread::spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(check_retained_http_responses_after_restart());
+            let _ = done.send(());
+        });
+        finished
+            .recv_timeout(Duration::from_secs(20))
+            .expect("restart HTTP response checks exceeded deadlock guard");
+    }
+
+    async fn check_retained_http_responses_after_restart() {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         for control in [false, true] {
             let api = autonomous_api();
