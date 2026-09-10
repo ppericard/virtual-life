@@ -9,7 +9,7 @@ const groupInk = index => [4, 5, 7].includes(index) ? '#203333' : '#ffffff';
 export const groupLabel = index => index < 26 ? String.fromCharCode(65 + index) : `G${index + 1}`;
 
 export function failureText(failure) {
-  return `Agent ${failure.id} failed at tick ${failure.tick} · ${failure.reason} · Position (${failure.position.x}, ${failure.position.y}) · starting integrity ${failure.integrity_before}, upkeep ${failure.upkeep}, extra wear ${failure.action_wear}.`;
+  return `Agent ${failure.id} failed at tick ${failure.tick} · ${failure.reason} · Position (${failure.position.x}, ${failure.position.y}) · starting integrity ${failure.integrity_before}, occupied neighbours ${failure.occupied_neighbors}/8, effective upkeep ${failure.upkeep} (base ${failure.base_upkeep} + crowding ${failure.crowding_upkeep}), extra wear ${failure.action_wear}.`;
 }
 
 export function inspectionText(sample, selected) {
@@ -26,7 +26,7 @@ export function inspectionText(sample, selected) {
   }
   const agent = sample.cells[index];
   const properties = sample.experiment ? `Group ${groupLabel(agent.group)} · ${sample.experiment.maintenance ? 'Base weights' : 'Weights'} (wait, move, copy, ${sample.experiment.maintenance ? 'repair' : 'remove'}): ${agent.weights.join(', ')}` : `Value ${agent.value}`;
-  const integrity = sample.experiment?.maintenance ? ` · Integrity ${agent.integrity}/${sample.experiment.maintenance.maximum}` : '';
+  const integrity = sample.experiment?.maintenance ? ` · Integrity ${agent.integrity}/${sample.experiment.maintenance.maximum} · Current occupied neighbours ${agent.occupied_neighbors}/8 · Next-tick effective upkeep ${agent.next_tick_upkeep} (base ${sample.experiment.maintenance.upkeep} + crowding ${agent.crowding_upkeep}; displayed neighbourhood)` : '';
   return `ID ${agent.id} · ${properties} · Position (${index % sample.width}, ${Math.floor(index / sample.width)})${integrity}`;
 }
 
@@ -49,8 +49,8 @@ export function renderExperiment(sample) {
   const info = sample.experiment;
   document.getElementById('action-order').textContent = `Wait / move / copy / ${info.maintenance ? 'repair' : 'remove'}`;
   const rules = info.maintenance;
-  const compatibility = rules ? ' (Replaying wear-repair v1 results requires its earlier code.)' : '';
-  const maintenance = rules ? ` Maximum, initial and newborn integrity ${rules.maximum}; upkeep ${rules.upkeep}; extra move/copy wear ${rules.move_wear}/${rules.copy_wear}; gross repair ${rules.repair}. Repair costs the action opportunity. Failed spatial attempts pay wear.` : ' Random removal comparison; no integrity.';
+  const compatibility = rules ? ' (Replaying wear-repair v1 requires its earlier code; crowding v2 requires --crowding-upkeep 0 with matching settings.)' : '';
+  const maintenance = rules ? ` Maximum, initial and newborn integrity ${rules.maximum}; base upkeep ${rules.upkeep}, plus ${rules.crowding_upkeep} when at least ${rules.crowding_threshold}/8 starting neighbours are occupied; extra move/copy wear ${rules.move_wear}/${rules.copy_wear}; gross repair ${rules.repair}. Upkeep precedes every action, including Repair. Repair costs the action opportunity. Failed spatial attempts pay wear.` : ' Random removal comparison; no integrity.';
   document.getElementById('configuration').textContent = `Seed ${info.seed} · ${info.generator} · crate ${info.version} · ${info.protocol}${compatibility} · occupancy ${info.occupancy} (rounded down to an exact count) · ${sample.end_tick} ticks.${maintenance} Illustrative settings, not calibrated biology.`;
   if (rules) {
     const history = sample.failure_history;

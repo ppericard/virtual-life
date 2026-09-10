@@ -1,7 +1,7 @@
 use virtual_life::{
     engine::{
         Action, Agent, FAILURE_LIMIT, FailureReason, Maintenance, Position, Proposal, Weights,
-        World,
+        World, upkeep_at,
     },
     experiment::{self, ExperimentConfig, Random},
     launch,
@@ -29,6 +29,281 @@ fn condition(world: &World, id: u64) -> u32 {
         .find(|a| a.id == id)
         .unwrap()
         .integrity
+}
+
+#[test]
+fn crowding_upkeep_wait_and_repair_worked_examples_include_wrapped_neighbors() {
+    for origin in [p(2, 2), p(0, 0)] {
+        let neighbors = world(&[]).neighbors(origin).unwrap();
+        for (occupied, wait, repair) in [(4, 5, 9), (5, 4, 8), (8, 4, 8)] {
+            for (action, expected) in [(Action::Wait, wait), (Action::Repair, repair)] {
+                let mut agents = vec![(origin, agent(1, 6))];
+                agents.extend(neighbors[..occupied].iter().enumerate().map(|(i, &at)| {
+                    // Their impending deaths must not make the starting world emptier.
+                    (at, agent(i as u64 + 2, 1))
+                }));
+                let mut w = world(&agents);
+                w.step(&[Proposal::new(1, action)]).unwrap();
+                assert_eq!(
+                    condition(&w, 1),
+                    expected,
+                    "{origin:?}, N={occupied}, {action:?}"
+                );
+                assert_eq!(w.count(), 1);
+            }
+        }
+    }
+}
+
+#[test]
+fn effective_upkeep_exact_zero_skips_all_draws_and_cannot_be_repaired() {
+    for occupied in [5, 8] {
+        for weights in [
+            Weights([1, 0, 0, 0]),
+            Weights([0, 1, 0, 0]),
+            Weights([0, 0, 1, 0]),
+            Weights([0, 0, 0, 1]),
+        ] {
+            let mut agents = vec![(
+                p(0, 0),
+                Agent {
+                    weights,
+                    ..agent(1, 2)
+                },
+            )];
+            agents.extend(
+                world(&[]).neighbors(p(0, 0)).unwrap()[..occupied]
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &at)| (at, agent(i as u64 + 2, 1))),
+            );
+            let mut w = world(&agents);
+            let mut random = Random::new(29);
+            let before_random = random.clone();
+            assert!(experiment::proposals(&w, &mut random).is_empty());
+            assert_eq!(random, before_random, "no action or destination draw");
+            let events = w.step(&[Proposal::new(1, Action::Repair)]).unwrap();
+            assert_eq!(
+                (w.count(), events.repairs, events.failures),
+                (0, 0, occupied as u64 + 1)
+            );
+            let failure = w.failures().iter().find(|f| f.id == 1).unwrap();
+            assert_eq!(
+                (
+                    failure.reason,
+                    failure.integrity_before,
+                    failure.occupied_neighbors,
+                    failure.base_upkeep,
+                    failure.crowding_upkeep,
+                    failure.upkeep,
+                    failure.action_wear
+                ),
+                (FailureReason::Upkeep, 2, occupied as u8, 1, 1, 2, 0)
+            );
+            assert_eq!(w.next_id(), occupied as u64 + 2);
+        }
+    }
+}
+
+#[test]
+fn moving_pays_origin_crowding_including_neighbors_that_die_or_move() {
+    let mut w = world(&[
+        (p(2, 2), agent(1, 6)),
+        (p(1, 1), agent(2, 1)),
+        (p(2, 1), agent(3, 1)),
+        (p(3, 1), agent(4, 1)),
+        (p(1, 2), agent(5, 1)),
+        (p(1, 3), agent(6, 10)),
+    ]);
+    let rules = w.maintenance().unwrap();
+    assert_eq!(
+        upkeep_at(5, 5, w.cells(), p(2, 2), rules)
+            .unwrap()
+            .occupied_neighbors,
+        5
+    );
+    assert_eq!(
+        upkeep_at(5, 5, w.cells(), p(3, 3), rules)
+            .unwrap()
+            .effective_upkeep,
+        1
+    );
+    let actions = [
+        Proposal::new(1, Action::Move(p(3, 3))),
+        Proposal::new(6, Action::Move(p(0, 4))),
+    ];
+    let mut reversed = w.clone();
+    reversed
+        .step(&actions.into_iter().rev().collect::<Vec<_>>())
+        .unwrap();
+    let events = w.step(&actions).unwrap();
+    assert_eq!(w, reversed);
+    assert_eq!((events.moves, events.failures, condition(&w, 1)), (2, 4, 3));
+    assert_eq!(w.agent_at(p(3, 3)).unwrap(), Some(agent(1, 3)));
+    assert_eq!(
+        upkeep_at(5, 5, w.cells(), p(3, 3), rules)
+            .unwrap()
+            .occupied_neighbors,
+        0
+    );
+    w.step(&[]).unwrap();
+    assert_eq!(
+        condition(&w, 1),
+        2,
+        "escaping reduces upkeep only on the following tick"
+    );
+}
+
+#[test]
+fn crowding_affordability_precedes_claims_and_newborns_first_pay_next_tick() {
+    // Threshold zero isolates the changed cost from the existing claim rules.
+    let rules = Maintenance {
+        crowding_threshold: 0,
+        ..Maintenance::default()
+    };
+    for (integrity, action, reason) in [
+        (2, Action::Move(p(1, 2)), FailureReason::Upkeep),
+        (3, Action::Move(p(1, 2)), FailureReason::MoveWear),
+        (4, Action::Create(p(1, 2)), FailureReason::CopyWear),
+    ] {
+        let mut w = World::with_maintenance(
+            5,
+            5,
+            &[
+                (p(0, 2), agent(1, integrity)),
+                (p(2, 2), agent(2, 10)),
+                (p(0, 1), agent(3, 10)),
+            ],
+            rules,
+        )
+        .unwrap();
+        let events = w
+            .step(&[
+                Proposal::new(1, action),
+                Proposal::new(2, Action::Create(p(1, 2))),
+                Proposal::new(3, Action::Move(p(0, 2))),
+            ])
+            .unwrap();
+        assert_eq!((events.creations, events.moves, events.failures), (1, 0, 1));
+        assert_eq!(
+            (condition(&w, 2), condition(&w, 3), condition(&w, 4)),
+            (6, 7, 10)
+        );
+        assert_eq!(w.next_id(), 5);
+        assert_eq!(w.failures()[0].reason, reason);
+        assert_eq!(w.failures()[0].upkeep, 2);
+        assert_eq!(
+            w.failures()[0].action_wear,
+            if reason == FailureReason::Upkeep {
+                0
+            } else if reason == FailureReason::MoveWear {
+                1
+            } else {
+                2
+            }
+        );
+        w.step(&[]).unwrap();
+        assert_eq!(condition(&w, 4), 8);
+    }
+    let mut conflict = World::with_maintenance(
+        5,
+        5,
+        &[(p(0, 2), agent(1, 10)), (p(2, 2), agent(2, 10))],
+        rules,
+    )
+    .unwrap();
+    let events = conflict
+        .step(&[
+            Proposal::new(1, Action::Move(p(1, 2))),
+            Proposal::new(2, Action::Create(p(1, 2))),
+        ])
+        .unwrap();
+    assert_eq!(
+        (events.moves, events.creations, conflict.next_id()),
+        (0, 0, 3)
+    );
+    assert_eq!((condition(&conflict, 1), condition(&conflict, 2)), (7, 6));
+}
+
+#[test]
+fn thresholds_zero_through_eight_and_disabled_surcharge_have_exact_costs() {
+    for threshold in 0..=8 {
+        for occupied in 0..=8 {
+            for extra in [0, 2] {
+                let rules = Maintenance {
+                    crowding_threshold: threshold,
+                    crowding_upkeep: extra,
+                    ..Maintenance::default()
+                };
+                let mut agents = vec![(p(2, 2), agent(1, 6))];
+                agents.extend(
+                    world(&[]).neighbors(p(2, 2)).unwrap()[..occupied]
+                        .iter()
+                        .enumerate()
+                        .map(|(i, &at)| (at, agent(i as u64 + 2, 10))),
+                );
+                let mut w = World::with_maintenance(5, 5, &agents, rules).unwrap();
+                let cost = if occupied as u32 >= threshold {
+                    1 + extra
+                } else {
+                    1
+                };
+                let before = w.clone();
+                let inspection = upkeep_at(5, 5, w.cells(), p(2, 2), rules).unwrap();
+                assert_eq!(
+                    (inspection.occupied_neighbors, inspection.effective_upkeep),
+                    (occupied as u8, u64::from(cost))
+                );
+                assert_eq!(w, before);
+                w.step(&[]).unwrap();
+                assert_eq!(condition(&w, 1), 6 - cost);
+            }
+        }
+    }
+}
+
+#[test]
+fn maximum_base_plus_surcharge_is_wide_and_failure_is_atomic() {
+    let rules = Maintenance {
+        maximum: u32::MAX,
+        upkeep: u32::MAX,
+        crowding_threshold: 0,
+        crowding_upkeep: u32::MAX,
+        repair: u32::MAX,
+        ..Maintenance::default()
+    };
+    let mut w = World::with_maintenance(5, 5, &[(p(0, 0), agent(1, u32::MAX))], rules).unwrap();
+    let mut random = Random::new(1);
+    let before_random = random.clone();
+    assert!(experiment::proposals(&w, &mut random).is_empty());
+    assert_eq!(random, before_random);
+    let before = w.clone();
+    assert!(
+        w.step(&[
+            Proposal::new(1, Action::Repair),
+            Proposal::new(99, Action::Wait)
+        ])
+        .is_err()
+    );
+    assert_eq!(w, before);
+    let events = w.step(&[Proposal::new(1, Action::Repair)]).unwrap();
+    assert_eq!(
+        (events.failures, events.repairs, w.count(), w.next_id()),
+        (1, 0, 0, 2)
+    );
+    let failure = w.failures()[0];
+    assert_eq!(
+        (failure.upkeep, failure.base_upkeep, failure.crowding_upkeep),
+        (8_589_934_590, u32::MAX, u32::MAX)
+    );
+    assert_eq!(
+        (
+            failure.reason,
+            failure.action_wear,
+            failure.occupied_neighbors
+        ),
+        (FailureReason::Upkeep, 0, 0)
+    );
 }
 
 #[test]
@@ -225,11 +500,12 @@ fn bounded_failure_records_retain_tick_order_and_count_discarded_records() {
     );
     assert_eq!(w.failures().front().unwrap().id, 273);
     assert_eq!(w.failures().back().unwrap().id, 400);
-    assert!(
-        w.failures()
-            .iter()
-            .all(|f| f.tick == 1 && f.reason == FailureReason::Upkeep)
-    );
+    assert!(w.failures().iter().all(|f| f.tick == 1
+        && f.reason == FailureReason::Upkeep
+        && f.occupied_neighbors == 8
+        && f.upkeep == 2
+        && f.base_upkeep == 1
+        && f.crowding_upkeep == 1));
     let records = w.failures().clone();
     w.step(&[]).unwrap();
     assert_eq!(*w.failures(), records);
@@ -254,12 +530,12 @@ fn full_neighborhood_transfers_copy_to_wait_before_neighbors_fail_upkeep() {
     assert_eq!(chosen, [Proposal::new(1, Action::Wait)]);
     let events = w.step(&chosen).unwrap();
     assert_eq!((events.failures, events.creations, w.count()), (8, 0, 1));
-    assert_eq!(condition(&w, 1), 2); // No Copy choice, so no unaffordable Copy wear.
+    assert_eq!(condition(&w, 1), 1); // Crowding upkeep only; no Copy wear.
     assert_eq!(
         w.agent_at(p(0, 0)).unwrap().unwrap().weights,
         Weights([0, 0, 1, 0])
     );
-    assert_eq!(experiment::proposals(&w, &mut random).len(), 1);
+    assert!(experiment::proposals(&w, &mut random).is_empty()); // Remaining base upkeep is unaffordable.
 }
 
 #[test]
@@ -299,7 +575,7 @@ fn crowded_copy_keeps_all_eight_targets_and_draws_before_affordability() {
             let accepted = succeeds.step(&chosen).unwrap();
             let rejected = fails.step(&chosen).unwrap();
             assert_eq!(accepted.creations, u64::from(target == p(2, 2)));
-            assert_eq!(condition(&succeeds, 1), 7);
+            assert_eq!(condition(&succeeds, 1), 6);
             assert_eq!(
                 (rejected.failures, rejected.creations, fails.count()),
                 (8, 0, 0)
@@ -325,6 +601,8 @@ fn zero_costs_and_repair_can_sustain_life_and_large_restoration_cannot_overflow(
         Maintenance {
             maximum: 1,
             upkeep: 0,
+            crowding_threshold: 0,
+            crowding_upkeep: 0,
             move_wear: 0,
             copy_wear: 0,
             repair: 0,
@@ -367,6 +645,67 @@ fn zero_costs_and_repair_can_sustain_life_and_large_restoration_cannot_overflow(
 
 #[test]
 fn configuration_rejects_invalid_survival_settings_and_grouping_ignores_integrity() {
+    for web in [false, true] {
+        for (flag, invalid) in [
+            ("--crowding-threshold", "9"),
+            ("--crowding-threshold", "4294967295"),
+            ("--crowding-threshold", "-1"),
+            ("--crowding-threshold", "1.5"),
+            ("--crowding-upkeep", "-1"),
+            ("--crowding-upkeep", "1.5"),
+            ("--crowding-upkeep", "4294967296"),
+        ] {
+            assert!(
+                launch::parse(
+                    ["--mode", "autonomous", flag, invalid].map(str::to_owned),
+                    web
+                )
+                .is_err()
+            );
+        }
+        for flag in ["--crowding-threshold", "--crowding-upkeep"] {
+            assert!(launch::parse(["--mode", "demo", flag, "0"].map(str::to_owned), web).is_err());
+            assert!(
+                launch::parse(
+                    ["--mode", "autonomous", "--survival", "random", flag, "0"].map(str::to_owned),
+                    web
+                )
+                .is_err()
+            );
+        }
+        for threshold in ["0", "8"] {
+            let parsed = launch::parse(
+                [
+                    "--mode",
+                    "autonomous",
+                    "--crowding-threshold",
+                    threshold,
+                    "--crowding-upkeep",
+                    "4294967295",
+                ]
+                .map(str::to_owned),
+                web,
+            )
+            .unwrap();
+            let rules = parsed.config.experiment.unwrap().maintenance.unwrap();
+            assert_eq!(
+                (rules.crowding_threshold, rules.crowding_upkeep),
+                (threshold.parse().unwrap(), u32::MAX)
+            );
+        }
+    }
+    assert!(
+        World::with_maintenance(
+            5,
+            5,
+            &[],
+            Maintenance {
+                crowding_threshold: 9,
+                ..Maintenance::default()
+            }
+        )
+        .is_err()
+    );
     for args in [
         vec!["--mode", "autonomous", "--integrity", "0"],
         vec!["--mode", "autonomous", "--upkeep", "4294967296"],

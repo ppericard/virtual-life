@@ -6,7 +6,7 @@ use crate::{
 };
 use std::time::Duration;
 
-pub const OPTIONS: &str = "[--mode demo|autonomous] [--survival wear-repair|random] [--ticks N] [--width N] [--height N] [--occupancy 0..1] [--bundles W,M,C,R;...] [--proportions N,...] [--seed N] [--integrity N] [--upkeep N] [--move-wear N] [--copy-wear N] [--repair N]\nAutonomous defaults to wear-repair: fourth weight is Repair (Remove in random mode). Integrity defaults to 10, upkeep 1, extra move/copy wear 1/2, gross repair 4. Maintenance settings require wear-repair; all use nonnegative u32 integers, integrity must be positive.";
+pub const OPTIONS: &str = "[--mode demo|autonomous] [--survival wear-repair|random] [--ticks N] [--width N] [--height N] [--occupancy 0..1] [--bundles W,M,C,R;...] [--proportions N,...] [--seed N] [--integrity N] [--upkeep N] [--crowding-threshold 0..8] [--crowding-upkeep N] [--move-wear N] [--copy-wear N] [--repair N]\nAutonomous defaults to wear-repair: fourth weight is Repair (Remove in random mode). Integrity defaults to 10, base upkeep 1, crowding threshold 5 with extra upkeep 1, extra move/copy wear 1/2, gross repair 4. Maintenance settings require wear-repair; all use nonnegative u32 integers, integrity must be positive, crowding threshold must be 0..8. Threshold 0 applies everywhere; crowding upkeep 0 disables the surcharge.";
 
 pub struct Launch {
     pub config: Config,
@@ -52,13 +52,21 @@ pub fn parse(arguments: impl IntoIterator<Item = String>, web: bool) -> Result<L
                 survival = value;
                 model_options = true;
             }
-            "--integrity" | "--upkeep" | "--move-wear" | "--copy-wear" | "--repair" => {
+            "--integrity"
+            | "--upkeep"
+            | "--crowding-threshold"
+            | "--crowding-upkeep"
+            | "--move-wear"
+            | "--copy-wear"
+            | "--repair" => {
                 let amount =
                     u32::try_from(integer()?).map_err(|_| "maintenance values must fit u32")?;
                 let rules = experiment.maintenance.as_mut().unwrap();
                 match argument.as_str() {
                     "--integrity" => rules.maximum = amount,
                     "--upkeep" => rules.upkeep = amount,
+                    "--crowding-threshold" => rules.crowding_threshold = amount,
+                    "--crowding-upkeep" => rules.crowding_upkeep = amount,
                     "--move-wear" => rules.move_wear = amount,
                     "--copy-wear" => rules.copy_wear = amount,
                     _ => rules.repair = amount,
@@ -198,10 +206,18 @@ pub fn describe(config: &Config) -> Result<(), String> {
             }
         );
         if let Some(rules) = experiment.maintenance {
-            println!("Replaying wear-repair v1 results requires its earlier code.");
             println!(
-                "integrity={} upkeep={} move_wear={} copy_wear={} repair={}; initial and newborn integrity use the maximum",
-                rules.maximum, rules.upkeep, rules.move_wear, rules.copy_wear, rules.repair
+                "Replaying wear-repair v1 requires its earlier code; crowding v2 requires --crowding-upkeep 0 with matching settings."
+            );
+            println!(
+                "integrity={} upkeep={} crowding_threshold={} crowding_upkeep={} move_wear={} copy_wear={} repair={}; initial and newborn integrity use the maximum",
+                rules.maximum,
+                rules.upkeep,
+                rules.crowding_threshold,
+                rules.crowding_upkeep,
+                rules.move_wear,
+                rules.copy_wear,
+                rules.repair
             );
         }
         println!(

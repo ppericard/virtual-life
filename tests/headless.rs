@@ -26,11 +26,65 @@ fn repair_only_population_maintains_integrity_in_the_default_experiment() {
     assert!(text.contains("tick=2 count=9"), "{text}");
     assert!(text.contains("repairs=18 failures=0"), "{text}");
     assert!(text.contains("integrity=10/10"), "{text}");
-    assert!(text.contains("protocol=wear-repair crowding v2"), "{text}");
+    assert!(text.contains("protocol=wear-repair crowding v3"), "{text}");
     assert!(
-        text.contains("Replaying wear-repair v1 results requires its earlier code."),
+        text.contains("crowding_threshold=5 crowding_upkeep=1"),
         "{text}"
     );
+    assert!(text.contains("current_occupied_neighbors=8 next_tick_upkeep=2 (base=1 crowding=1; displayed neighborhood)"), "{text}");
+    assert!(
+        text.contains("Replaying wear-repair v1 requires its earlier code; crowding v2 requires --crowding-upkeep 0 with matching settings."),
+        "{text}"
+    );
+}
+
+#[test]
+fn crowding_cli_reports_exact_wide_costs_in_inspection_and_recorded_failure() {
+    // Include process completion (and its worker teardown) inside the guard.
+    let (done, finished) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        check_wide_crowding_output();
+        let _ = done.send(());
+    });
+    finished
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("crowding CLI exceeded its process-completion guard");
+}
+
+fn check_wide_crowding_output() {
+    for ticks in ["0", "1"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_headless"))
+            .args([
+                "--mode",
+                "autonomous",
+                "--width",
+                "3",
+                "--height",
+                "3",
+                "--occupancy",
+                "1",
+                "--integrity",
+                "4294967295",
+                "--upkeep",
+                "4294967295",
+                "--crowding-upkeep",
+                "4294967295",
+                "--crowding-threshold",
+                "8",
+                "--ticks",
+                ticks,
+            ])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let text = String::from_utf8(output.stdout).unwrap();
+        if ticks == "0" {
+            assert!(text.contains("current_occupied_neighbors=8 next_tick_upkeep=8589934590 (base=4294967295 crowding=4294967295; displayed neighborhood)"), "{text}");
+        } else {
+            assert!(text.contains("tick=1 count=0"), "{text}");
+            assert!(text.contains("reason=upkeep integrity_before=4294967295 occupied_neighbors=8 base_upkeep=4294967295 crowding_upkeep=4294967295 upkeep=8589934590 action_wear=0"), "{text}");
+        }
+    }
 }
 
 #[test]

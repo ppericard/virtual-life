@@ -82,9 +82,9 @@ The native process owns the experiment. Refreshing, closing, hiding, or disconne
 
 **10 September 2026 — Pierre's decision:** replace a chosen random death with a small integrity/maintenance experiment, before adding neighbourhood or energy rules. Each individual has one mutable nonnegative integer `integrity`. All individuals share adjustable maximum/initial/newborn integrity, upkeep, extra move/copy wear and gross repair. Their species is the exact **Wait/Move/Copy/Repair weight tuple** within this shared rule; current integrity, ID, ancestry and position do not define a species. Identical bundles coalesce as before. Properties do not mutate during life.
 
-The default is `--survival wear-repair`, with maximum 10, upkeep 1, extra move wear 1, extra copy wear 2 and gross repair 4. The fourth choice is Repair, replacing Remove. Default bundles are A `(2,4,1,3)`, B `(2,2,2,4)`, C `(4,1,1,4)` and D `(1,5,2,2)`. The 32 × 24 grid, occupancy 0.3, equal proportions, seed 1 and 500-tick limit are unchanged. These are adjustable illustrative settings, not values tuned for coexistence or biological calibration.
+The default is `--survival wear-repair`, with maximum 10, base upkeep 1, extra crowding upkeep 1 at five or more occupied neighbours, extra move wear 1, extra copy wear 2 and gross repair 4. The fourth choice is Repair, replacing Remove. Default bundles are A `(2,4,1,3)`, B `(2,2,2,4)`, C `(4,1,1,4)` and D `(1,5,2,2)`. The 32 × 24 grid, occupancy 0.3, equal proportions, seed 1 and 500-tick limit are unchanged. These are adjustable illustrative settings, not values tuned for coexistence or biological calibration.
 
-For every tick, validate all state, rules and proposals without mutation. An individual with `integrity <= upkeep` fails maintenance and is removed before choosing or performing any action. It cannot repair itself in that tick. Otherwise it pays upkeep and chooses one weighted action using the crowding policy below:
+For every tick, validate all state, rules and proposals without mutation. Count occupied squares among the eight wrapped neighbours in the unchanged starting world. With count `N`, effective upkeep is `base upkeep + (N >= crowding threshold ? crowding upkeep : 0)`. An individual with `integrity <= effective upkeep` fails maintenance and is removed before choosing or performing any action, with no action or destination draw. It cannot repair itself in that tick. Otherwise it pays effective upkeep and chooses one weighted action using the crowding policy below:
 
 - **Wait:** no further change; upkeep has still been paid.
 - **Move or Copy:** draw uniformly among all eight neighbours, before checking affordability or occupancy. If integrity after upkeep is less than or equal to the extra wear, the individual fails before the spatial action. It makes no claim, creates no child and allocates no ID. Otherwise charge the wear, even when occupancy or competing claims subsequently reject the destination. There are no retries.
@@ -92,7 +92,13 @@ For every tick, validate all state, rules and proposals without mutation. An ind
 
 Only affordable move/copy attempts claim destinations. All claims still use the unchanged starting grid: competing affordable claims all fail, including mixed move/copy claims. A square vacated by failure remains start-occupied and unavailable until the next tick. Normal wrapping, single occupancy, stable IDs and row-major creation-ID allocation remain unchanged. Integrity updates, spatial outcomes, IDs, events and failure evidence commit atomically; invalid input or exhausted counters leave both buffers and all state unchanged.
 
-A successful copy inherits the parent's weight tuple, receives a fresh ID and starts at shared maximum integrity. The parent pays upkeep and copy wear and retains its ID. The newborn first acts next tick. This is a fresh functional condition, **not an energy-conservation model**; there is no energy or material account to duplicate. Initial individuals also start at maximum integrity.
+A successful copy inherits the parent's weight tuple, receives a fresh ID and starts at shared maximum integrity. The parent pays upkeep and copy wear and retains its ID. The newborn first acts and first pays upkeep next tick. This is a fresh functional condition, **not an energy-conservation model**; there is no energy or material account to duplicate. Initial individuals also start at maximum integrity.
+
+### Crowding increases upkeep
+
+**10 September 2026 — Pierre's decision:** shared base upkeep is increased by a fixed surcharge when starting occupied neighbours meet the threshold. The default threshold is 5 and the surcharge is 1. Every group and every action, including Wait and Repair, pays by the same rule. Neighbours that will die or move during the tick still count. Movement pays the origin's cost; escaping crowding can reduce upkeep only on the following tick.
+
+`--crowding-threshold` accepts integers 0–8: zero applies the surcharge everywhere, and eight requires all neighbours occupied. `--crowding-upkeep` accepts nonnegative `u32` values; zero disables the surcharge. Both are rejected in random/demo modes, including zero-valued overrides. Base plus surcharge uses `u64` without wrapping or clamping: two `u32::MAX` costs total 8,589,934,590, which no allowed integrity can survive. This changes maintenance cost, without adding an energy account, neighbour properties or another action choice.
 
 ### Copy tendency responds to local space
 
@@ -109,6 +115,8 @@ Read occupancy from the unchanged starting world, including wrapped neighbours a
 
 ### Worked conditions and boundaries
 
+The first table uses fewer than five occupied neighbours throughout, so effective upkeep is 1:
+
 | Starting integrity and choice | Default result |
 | --- | --- |
 | 10, Move to an eligible unclaimed neighbour | 8: pay 1 upkeep and 1 movement wear |
@@ -121,15 +129,22 @@ Read occupancy from the unchanged starting world, including wrapped neighbours a
 | 3, Copy | Upkeep leaves 2; extra wear 2 would leave zero, so remove before claiming |
 | 1, Repair | Upkeep failure; no repair occurs |
 
+| Starting integrity and choice | 4 occupied neighbours | 5 or 8 occupied neighbours |
+| --- | --- | --- |
+| 6, Wait | 5 | 4 |
+| 6, Repair | 9: pay 1, restore 4 | 8: pay 2, restore 4 |
+| 2, Repair | 5 | Upkeep failure before repair or any random draw |
+| 6, Move attempt | 4 | 3; with 8 occupied neighbours the attempt is rejected and the individual stays in place |
+
 Maximum must be positive. Costs/restoration may be zero and may exceed the maximum; arithmetic uses wider integers or comparisons before subtraction. There is no survivor at integrity zero. There is no lifespan draw, age limit, random death choice, inactivity penalty, hidden balancing or reseeding. Sufficient repair can sustain an individual indefinitely; zero upkeep/costs can also permit persistence. Extinction and continued survival are both valid, and the finite run limit remains independent of either outcome.
 
 ### Failure evidence and reproducibility
 
-Every failure has an engine-recorded cause: **upkeep**, **move wear** or **copy wear**. Records include ID, resulting tick, starting position, starting integrity, upkeep and selected extra wear (zero when upkeep failed first). Each run retains the latest 128 records in tick then starting-square order, counts discarded older records, and retains cumulative repairs/failures. This evidence is recorded on every simulation tick independently of viewers or sample cadence; it is bounded causal evidence, not a complete event journal. Inspection can report a selected individual's retained failure or state that its record has been discarded. Plot gaps do not fabricate events. Reconnection retains the same run's server evidence; a new experiment clears it.
+Every failure has an engine-recorded cause: **upkeep**, **move wear** or **copy wear**. Records include ID, resulting tick, starting position, starting integrity, starting occupied-neighbour count, base upkeep, applied crowding surcharge, effective upkeep and selected extra wear (zero when upkeep failed first). Each run retains the latest 128 records in tick then starting-square order, counts discarded older records, and retains cumulative repairs/failures. This evidence is recorded on every simulation tick independently of viewers or sample cadence; it is bounded causal evidence, not a complete event journal. Live inspection shows occupied neighbours and potential next-tick upkeep for the **displayed neighbourhood**, not the last charged cost. Absent-agent inspection uses its recorded starting conditions even if the square is now empty or occupied by someone else, or states that its record has been discarded. Plot gaps do not fabricate events. Reconnection retains the same run's server evidence; a new experiment clears it.
 
-Initialization and bounded random draws use the SplitMix64 procedure below. The **wear-repair crowding v2** policy scans occupied starting squares in row-major order, skips all random draws for individuals unable to survive upkeep, then makes one bounded action draw below `8(W+M+C+R)` for every survivor. Tickets and their total use `u64`; with four `u32` base weights the total is at most `32 × u32::MAX`, safely below the limit. Do not simplify the common factor even when all eight neighbours are empty or Copy is zero: the bound is part of the reproducible protocol. Move/Copy then draws below 8, including unaffordable attempts. Wait/Repair draws no destination. Bounded-draw rejection still consumes raw generator values as documented; counting occupancy, adjusting tickets, integrity costs and repair add no random draws.
+Initialization and bounded random draws use the SplitMix64 procedure below. The **wear-repair crowding v3** policy scans occupied starting squares in row-major order, skips all random draws for individuals unable to survive effective upkeep, then makes one bounded action draw below `8(W+M+C+R)` for every survivor. Tickets and their total use `u64`; with four `u32` base weights the total is at most `32 × u32::MAX`, safely below the limit. Do not simplify the common factor even when all eight neighbours are empty or Copy is zero: the bound is part of the reproducible protocol. Move/Copy then draws below 8, including unaffordable attempts. Wait/Repair draws no destination. Bounded-draw rejection still consumes raw generator values as documented; counting occupancy, adjusting tickets, integrity costs and repair add no random draws.
 
-The new action bound and crowding choices intentionally change wear-repair seeded trajectories relative to **wear-repair v1**, even where probabilities coincide. Initialization is unchanged. The random-removal comparison remains **random v1**, with its original bounds and draw order. Record the action protocol as well as settings, seed, source commit and Cargo.lock when reproducing results; a v1 wear result requires its earlier source version.
+V3 preserves v2's Copy-to-Wait tickets and draw bounds; the surcharge can change survival, affordability and later draws. Setting `--crowding-upkeep 0` reproduces **wear-repair crowding v2** simulation trajectories with otherwise matching settings and seed, while output retains v3's expanded evidence format. V2 changed the action bound and crowding choices relative to **wear-repair v1**, even where probabilities coincide; a v1 wear result requires its earlier source version. Initialization is unchanged. The random-removal comparison remains **random v1**, with its original bounds and draw order. Record the action protocol as well as settings, seed, source commit and Cargo.lock when reproducing results.
 
 ## Option A comparison: random removal
 

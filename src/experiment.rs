@@ -117,7 +117,7 @@ impl ExperimentConfig {
     }
     pub fn protocol(&self) -> &'static str {
         if self.maintenance.is_some() {
-            "wear-repair crowding v2"
+            "wear-repair crowding v3"
         } else {
             "random v1"
         }
@@ -240,21 +240,23 @@ pub fn proposals(world: &World, random: &mut Random) -> Vec<Proposal> {
         .enumerate()
         .filter_map(|(index, cell)| {
             let agent = (*cell)?;
-            if world
-                .maintenance()
-                .is_some_and(|rules| agent.integrity <= rules.upkeep)
-            {
+            let position = Position::new(index % world.width(), index / world.width());
+            let upkeep = world.maintenance().map(|rules| {
+                crate::engine::upkeep_at(
+                    world.width(),
+                    world.height(),
+                    world.cells(),
+                    position,
+                    rules,
+                )
+                .expect("validated autonomous world")
+            });
+            if upkeep.is_some_and(|cost| u64::from(agent.integrity) <= cost.effective_upkeep) {
                 return None; // Upkeep failure is resolved before action choice; no draw.
             }
-            let position = Position::new(index % world.width(), index / world.width());
             let mut tickets = agent.weights.0.map(u64::from);
-            if world.maintenance().is_some() {
-                let empty = world
-                    .neighbors(position)
-                    .unwrap()
-                    .iter()
-                    .filter(|&&neighbor| world.agent_at(neighbor).unwrap().is_none())
-                    .count() as u64;
+            if let Some(cost) = upkeep {
+                let empty = 8 - u64::from(cost.occupied_neighbors);
                 let [wait, movement, copy, repair] = tickets;
                 // Eightfold tickets keep odd/fractional Copy shares exact. The
                 // total is 8 * sum(base weights), at most 32 * u32::MAX in u64.

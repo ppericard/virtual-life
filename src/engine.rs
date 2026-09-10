@@ -35,6 +35,8 @@ pub struct Agent {
 pub struct Maintenance {
     pub maximum: u32,
     pub upkeep: u32,
+    pub crowding_threshold: u32,
+    pub crowding_upkeep: u32,
     pub move_wear: u32,
     pub copy_wear: u32,
     pub repair: u32,
@@ -45,6 +47,8 @@ impl Default for Maintenance {
         Self {
             maximum: 10,
             upkeep: 1,
+            crowding_threshold: 5,
+            crowding_upkeep: 1,
             move_wear: 1,
             copy_wear: 2,
             repair: 4,
@@ -57,8 +61,89 @@ impl Maintenance {
         if self.maximum == 0 {
             return Err("integrity maximum must be positive".into());
         }
+        if self.crowding_threshold > 8 {
+            return Err("crowding threshold must be between 0 and 8".into());
+        }
         Ok(())
     }
+}
+
+/// A cost for the supplied, unchanged neighbourhood, before any actions or deaths.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Upkeep {
+    pub occupied_neighbors: u8,
+    pub base_upkeep: u32,
+    pub crowding_upkeep: u32,
+    pub effective_upkeep: u64,
+}
+
+/// Shared by action selection, resolution and inspection of immutable snapshots.
+pub fn upkeep_at(
+    width: usize,
+    height: usize,
+    cells: &[Option<Agent>],
+    position: Position,
+    rules: Maintenance,
+) -> Result<Upkeep, String> {
+    rules.validate()?;
+    if width.checked_mul(height) != Some(cells.len()) {
+        return Err("cell count does not match grid dimensions".into());
+    }
+    let occupied_neighbors = neighbor_positions(width, height, position)?
+        .iter()
+        .filter(|at| cells[at.y * width + at.x].is_some())
+        .count() as u8;
+    let crowding_upkeep = if u32::from(occupied_neighbors) >= rules.crowding_threshold {
+        rules.crowding_upkeep
+    } else {
+        0
+    };
+    Ok(Upkeep {
+        occupied_neighbors,
+        base_upkeep: rules.upkeep,
+        crowding_upkeep,
+        effective_upkeep: u64::from(rules.upkeep) + u64::from(crowding_upkeep),
+    })
+}
+
+fn neighbor_positions(
+    width: usize,
+    height: usize,
+    position: Position,
+) -> Result<[Position; 8], String> {
+    if width < 3 || height < 3 || position.x >= width || position.y >= height {
+        return Err("neighbours require a position inside a grid of at least 3 by 3".into());
+    }
+    let left = if position.x == 0 {
+        width - 1
+    } else {
+        position.x - 1
+    };
+    let right = if position.x == width - 1 {
+        0
+    } else {
+        position.x + 1
+    };
+    let up = if position.y == 0 {
+        height - 1
+    } else {
+        position.y - 1
+    };
+    let down = if position.y == height - 1 {
+        0
+    } else {
+        position.y + 1
+    };
+    Ok([
+        Position::new(left, up),
+        Position::new(position.x, up),
+        Position::new(right, up),
+        Position::new(left, position.y),
+        Position::new(right, position.y),
+        Position::new(left, down),
+        Position::new(position.x, down),
+        Position::new(right, down),
+    ])
 }
 
 pub const FAILURE_LIMIT: usize = 128;
@@ -87,7 +172,10 @@ pub struct Failure {
     pub position: Position,
     pub reason: FailureReason,
     pub integrity_before: u32,
-    pub upkeep: u32,
+    pub occupied_neighbors: u8,
+    pub base_upkeep: u32,
+    pub crowding_upkeep: u32,
+    pub upkeep: u64,
     pub action_wear: u32,
 }
 
@@ -268,36 +356,7 @@ impl World {
 
     pub fn neighbors(&self, position: Position) -> Result<[Position; 8], String> {
         self.index(position)?;
-        let left = if position.x == 0 {
-            self.width - 1
-        } else {
-            position.x - 1
-        };
-        let right = if position.x == self.width - 1 {
-            0
-        } else {
-            position.x + 1
-        };
-        let up = if position.y == 0 {
-            self.height - 1
-        } else {
-            position.y - 1
-        };
-        let down = if position.y == self.height - 1 {
-            0
-        } else {
-            position.y + 1
-        };
-        Ok([
-            Position::new(left, up),
-            Position::new(position.x, up),
-            Position::new(right, up),
-            Position::new(left, position.y),
-            Position::new(right, position.y),
-            Position::new(left, down),
-            Position::new(position.x, down),
-            Position::new(right, down),
-        ])
+        neighbor_positions(self.width, self.height, position)
     }
 
     /// Validate everything, resolve claims, then commit one synchronous tick.
@@ -364,9 +423,11 @@ impl World {
                     Action::Create(_) => (rules.copy_wear, FailureReason::CopyWear),
                     _ => (0, FailureReason::Upkeep),
                 };
-                let failed = if agent.integrity <= rules.upkeep {
+                let position = Position::new(source % self.width, source / self.width);
+                let upkeep = upkeep_at(self.width, self.height, &self.current, position, rules)?;
+                let failed = if u64::from(agent.integrity) <= upkeep.effective_upkeep {
                     Some((FailureReason::Upkeep, 0))
-                } else if agent.integrity - rules.upkeep <= wear {
+                } else if u64::from(agent.integrity) - upkeep.effective_upkeep <= u64::from(wear) {
                     Some((reason, wear))
                 } else {
                     None
@@ -377,14 +438,19 @@ impl World {
                     failures.push(Failure {
                         id: agent.id,
                         tick,
-                        position: Position::new(source % self.width, source / self.width),
+                        position,
                         reason,
                         integrity_before: agent.integrity,
-                        upkeep: rules.upkeep,
+                        occupied_neighbors: upkeep.occupied_neighbors,
+                        base_upkeep: upkeep.base_upkeep,
+                        crowding_upkeep: upkeep.crowding_upkeep,
+                        upkeep: upkeep.effective_upkeep,
                         action_wear,
                     });
                 } else {
-                    let after_upkeep = agent.integrity - rules.upkeep;
+                    // Survival proves this difference is positive and fits u32.
+                    let after_upkeep =
+                        (u64::from(agent.integrity) - upkeep.effective_upkeep) as u32;
                     let remaining = if action == Action::Repair {
                         let repaired = (u64::from(after_upkeep) + u64::from(rules.repair))
                             .min(u64::from(rules.maximum))
@@ -551,6 +617,9 @@ mod boundary_tests {
             position: Position::new(0, 0),
             reason: FailureReason::Upkeep,
             integrity_before: 1,
+            occupied_neighbors: 0,
+            base_upkeep: 1,
+            crowding_upkeep: 0,
             upkeep: 1,
             action_wear: 0,
         };

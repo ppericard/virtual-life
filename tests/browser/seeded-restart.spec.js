@@ -28,11 +28,12 @@ async function mutationsLocked(page) {
 }
 
 test.describe('seeded web restarts', () => {
-  test.use({ serverArgs: ['--mode', 'autonomous', '--width', '8', '--height', '6', '--ticks', '12', '--tick-ms', '60000'] });
+  test.use({ serverArgs: ['--mode', 'autonomous', '--width', '8', '--height', '6', '--ticks', '12', '--tick-ms', '60000', '--crowding-threshold', '3', '--crowding-upkeep', '2'] });
 
   test('fixed seed replays initial and final worlds, clears both pages and wraps on narrow screens', async ({ page, context, server }, info) => {
     await page.goto(server.url); await ready(page);
     const initial = await read(page, server);
+    expect(initial.sample.experiment.maintenance).toMatchObject({crowding_threshold:3,crowding_upkeep:2});
     const second = await context.newPage(); await second.goto(server.url); await ready(second);
     const selected = initial.sample.cells.find(Boolean).id;
     await page.locator('#agent').selectOption(selected);
@@ -88,6 +89,7 @@ test.describe('seeded web restarts', () => {
     const randomResponse = await changed;
     expect(randomResponse.status()).toBe(200);
     const random = await randomResponse.json();
+    expect(random.experiment.maintenance).toMatchObject({crowding_threshold:3,crowding_upkeep:2});
     const seed = random.experiment.seed;
     expect(seed).toMatch(/^\d+$/); expect(BigInt(seed)).toBeLessThanOrEqual(18446744073709551615n);
     await ready(page, seed);

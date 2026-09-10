@@ -47,7 +47,7 @@ pub fn snapshot_json(sample: &Snapshot) -> Value {
             "seed": info.config.seed.to_string(),
             "generator": crate::experiment::GENERATOR, "version": env!("CARGO_PKG_VERSION"),
             "survival": info.config.survival(), "protocol": info.config.protocol(),
-            "maintenance": info.config.maintenance.map(|rules| json!({"maximum":rules.maximum,"upkeep":rules.upkeep,"move_wear":rules.move_wear,"copy_wear":rules.copy_wear,"repair":rules.repair})),
+            "maintenance": info.config.maintenance.map(|rules| json!({"maximum":rules.maximum,"upkeep":rules.upkeep,"crowding_threshold":rules.crowding_threshold,"crowding_upkeep":rules.crowding_upkeep,"move_wear":rules.move_wear,"copy_wear":rules.copy_wear,"repair":rules.repair})),
             "occupancy": format!("{}.{:06}", info.config.occupancy / 1_000_000, info.config.occupancy % 1_000_000),
             "groups": info.groups.iter().enumerate().map(|(index, group)| json!({
                 "weights": group.weights.0, "proportion": group.proportion.to_string(),
@@ -58,14 +58,24 @@ pub fn snapshot_json(sample: &Snapshot) -> Value {
     let cells: Vec<_> = sample
         .cells
         .iter()
-        .map(|cell| {
+        .enumerate()
+        .map(|(index, cell)| {
             cell.map(|agent| {
                 if sample.experiment.is_none() {
                     return json!({"id": agent.id.to_string(), "value": agent.value.to_string()});
                 }
                 let group = sample.experiment.as_ref().map(|info| info.groups.iter().position(|g| g.weights == agent.weights).expect("configured group"));
                 let mut cell = json!({"id": agent.id.to_string(), "value": agent.value.to_string(), "weights": agent.weights.0, "group": group});
-                if sample.experiment.as_ref().is_some_and(|info| info.config.maintenance.is_some()) { cell["integrity"] = json!(agent.integrity); }
+                if let Some(rules) = sample.experiment.as_ref().and_then(|info| info.config.maintenance) {
+                    let cost = crate::engine::upkeep_at(sample.width, sample.height, &sample.cells,
+                        crate::engine::Position::new(index % sample.width, index / sample.width), rules)
+                        .expect("snapshot of a validated world");
+                    cell["integrity"] = json!(agent.integrity);
+                    // These describe the displayed frame, not the previous tick's charge.
+                    cell["occupied_neighbors"] = json!(cost.occupied_neighbors);
+                    cell["next_tick_upkeep"] = json!(cost.effective_upkeep.to_string());
+                    cell["crowding_upkeep"] = json!(cost.crowding_upkeep);
+                }
                 cell
             })
         })
@@ -93,7 +103,9 @@ pub fn snapshot_json(sample: &Snapshot) -> Value {
                 "id": failure.id.to_string(), "tick": failure.tick.to_string(),
                 "position": {"x":failure.position.x,"y":failure.position.y},
                 "reason": failure.reason.label(), "integrity_before":failure.integrity_before,
-                "upkeep":failure.upkeep,"action_wear":failure.action_wear
+                "occupied_neighbors":failure.occupied_neighbors,"base_upkeep":failure.base_upkeep,
+                "crowding_upkeep":failure.crowding_upkeep,
+                "upkeep":failure.upkeep.to_string(),"action_wear":failure.action_wear
             })).collect::<Vec<_>>()
         },
         "totals": totals
@@ -783,9 +795,22 @@ mod tests {
         assert_eq!(value["totals"]["value_changes"], "18446744073709551614");
 
         let mut wear_sample = sample;
+        wear_sample.cells.resize(9, None);
+        for agent in wear_sample.cells.iter_mut().flatten() {
+            agent.integrity = u32::MAX;
+        }
         let (_, _, info) = crate::experiment::ExperimentConfig {
+            width: 3,
+            height: 3,
             bundles: vec![crate::engine::Weights::default()],
             proportions: vec![1],
+            maintenance: Some(crate::engine::Maintenance {
+                maximum: u32::MAX,
+                upkeep: u32::MAX,
+                crowding_threshold: 0,
+                crowding_upkeep: u32::MAX,
+                ..Default::default()
+            }),
             ..crate::experiment::ExperimentConfig::default()
         }
         .initialize()
@@ -798,12 +823,23 @@ mod tests {
             id: u64::MAX - 1,
             tick: u64::MAX,
             position: crate::engine::Position::new(1, 1),
-            reason: crate::engine::FailureReason::CopyWear,
+            reason: crate::engine::FailureReason::Upkeep,
             integrity_before: u32::MAX,
-            upkeep: 1,
-            action_wear: u32::MAX,
+            occupied_neighbors: 8,
+            base_upkeep: u32::MAX,
+            crowding_upkeep: u32::MAX,
+            upkeep: 8_589_934_590,
+            action_wear: 0,
         });
         let value = snapshot_json(&wear_sample);
+        assert_eq!(value["cells"][0]["occupied_neighbors"], 1);
+        assert_eq!(value["cells"][0]["next_tick_upkeep"], "8589934590");
+        assert_eq!(value["cells"][0]["crowding_upkeep"], u32::MAX);
+        let failure = &value["failure_history"]["records"][0];
+        assert_eq!(failure["occupied_neighbors"], 8); // Recorded history, not today's neighbourhood.
+        assert_eq!(failure["upkeep"], "8589934590");
+        assert_eq!(failure["base_upkeep"], u32::MAX);
+        assert_eq!(failure["crowding_upkeep"], u32::MAX);
         assert_eq!(value["totals"]["repairs"], "18446744073709551615");
         assert_eq!(value["totals"]["failures"], "18446744073709551614");
         assert_eq!(

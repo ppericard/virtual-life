@@ -146,6 +146,8 @@ fn seeded_restart_replays_initial_and_fixed_tick_states_and_preserves_configurat
         Some(Maintenance {
             maximum: 17,
             upkeep: 2,
+            crowding_threshold: 3,
+            crowding_upkeep: 2,
             move_wear: 3,
             copy_wear: 4,
             repair: 6,

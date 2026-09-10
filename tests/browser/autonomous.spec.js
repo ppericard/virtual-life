@@ -14,12 +14,14 @@ test.describe('wear and repair default experiment', () => {
     await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
     await expect(page.locator('#action-order')).toHaveText('Wait / move / copy / repair');
     await expect(page.locator('#configuration')).toContainText('Maximum, initial and newborn integrity 10');
-    await expect(page.locator('#configuration')).toContainText('wear-repair crowding v2');
-    await expect(page.locator('#configuration')).toContainText('Replaying wear-repair v1 results requires its earlier code.');
+    await expect(page.locator('#configuration')).toContainText('wear-repair crowding v3');
+    await expect(page.locator('#configuration')).toContainText('Replaying wear-repair v1 requires its earlier code; crowding v2 requires --crowding-upkeep 0 with matching settings.');
+    await expect(page.locator('#configuration')).toContainText('base upkeep 1, plus 1 when at least 5/8 starting neighbours are occupied');
     await expect(page.locator('#choice-rule')).toContainText('Copy chance is scaled by the fraction of empty neighbours');
     let previous=await snapshot(page,server);
     expect(previous.experiment.survival).toBe('wear-repair');
-    expect(previous.experiment.protocol).toBe('wear-repair crowding v2');
+    expect(previous.experiment.protocol).toBe('wear-repair crowding v3');
+    expect(previous.experiment.maintenance).toMatchObject({crowding_threshold:5,crowding_upkeep:1});
     expect(previous.experiment.groups.map(g=>g.weights)).toEqual([[2,4,1,3],[2,2,2,4],[4,1,1,4],[1,5,2,2]]);
     const selected=previous.cells.find(Boolean); await page.locator('#agent').selectOption(selected.id);
     await expect(page.locator('#inspection')).toContainText('Integrity 10/10');
@@ -38,11 +40,15 @@ test.describe('wear and repair default experiment', () => {
       previous=current;
     }
     expect(recovered).toBe(true); expect(Number(previous.totals.repairs)).toBeGreaterThan(0);
-    expect(previous.experiment.groups.map(g=>g.count)).toEqual(['4','10','6','1']);
+    expect(previous.experiment.groups.map(g=>g.count)).toEqual(['1','9','4','1']);
     await page.locator('#agent').selectOption('23');
-    await expect(page.locator('#inspection')).toHaveText('ID 23 · Group A · Base weights (wait, move, copy, repair): 2, 4, 1, 3 · Position (3, 0) · Integrity 7/10');
-    await expect(page.locator('#plot')).toHaveAttribute('aria-label',/Tick 10: Group A 4, Group B 10, Group C 6, Group D 1; total 21/);
-    await save(page,info,'wear-crowding-v2-tick10');
+    await expect(page.locator('#inspection')).toHaveText('ID 23 · Group A · Base weights (wait, move, copy, repair): 2, 4, 1, 3 · Position (3, 0) · Integrity 7/10 · Current occupied neighbours 2/8 · Next-tick effective upkeep 1 (base 1 + crowding 0; displayed neighbourhood)');
+    await expect(page.locator('#plot')).toHaveAttribute('aria-label',/Tick 10: Group A 1, Group B 9, Group C 4, Group D 1; total 15/);
+    await save(page,info,'wear-crowding-v3-tick10');
+    await page.locator('#agent').selectOption('17');
+    await expect(page.locator('#inspection')).toHaveText('Agent 17 failed at tick 8 · upkeep · Position (3, 1) · starting integrity 2, occupied neighbours 5/8, effective upkeep 2 (base 1 + crowding 1), extra wear 0.');
+    expect(previous.cells[1*8+3].id).toBe('16'); // Historical failure survives a different current occupant.
+    await save(page,info,'wear-crowding-v3-failure');
     await page.getByRole('button',{name:'Resume',exact:true}).click(); await expect(page.getByRole('status')).toHaveText('completed');
     const final=await snapshot(page,server);
     expect(final.experiment.groups.reduce((n,g)=>n+Number(g.count),0)).toBe(Number(final.count));
@@ -67,19 +73,36 @@ test.describe('wear and repair default experiment', () => {
 });
 
 test.describe('exact upkeep failure evidence', () => {
-  test.use({serverArgs:['--mode','autonomous','--width','3','--height','3','--occupancy','1','--bundles','1,0,0,0','--proportions','1','--integrity','3','--ticks','3']});
+  test.use({serverArgs:['--mode','autonomous','--width','3','--height','3','--occupancy','1','--bundles','1,0,0,0','--proportions','1','--integrity','6','--ticks','3']});
   test('selected individual shows exact-zero upkeep failure at completion', async ({page,server},info) => {
     await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
     await page.locator('#agent').selectOption('1');
+    await expect(page.locator('#inspection')).toContainText('Current occupied neighbours 8/8 · Next-tick effective upkeep 2 (base 1 + crowding 1; displayed neighbourhood)');
+    await save(page,info,'wear-crowding-v3-inspection');
     for(let tick=1;tick<=2;tick++) {
       await page.getByRole('button',{name:'Single step'}).click(); await expect(page.locator('#tick')).toHaveText(String(tick));
-      await expect(page.locator('#inspection')).toContainText(`Integrity ${3-tick}/3`);
+      await expect(page.locator('#inspection')).toContainText(`Integrity ${6-2*tick}/6`);
     }
     await page.getByRole('button',{name:'Single step'}).click(); await expect(page.locator('#tick')).toHaveText('3');
-    await expect(page.locator('#inspection')).toHaveText('Agent 1 failed at tick 3 · upkeep · Position (0, 0) · starting integrity 1, upkeep 1, extra wear 0.');
+    await expect(page.locator('#inspection')).toHaveText('Agent 1 failed at tick 3 · upkeep · Position (0, 0) · starting integrity 2, occupied neighbours 8/8, effective upkeep 2 (base 1 + crowding 1), extra wear 0.');
     const final=await snapshot(page,server); expect(final.count).toBe('0'); expect(final.totals.failures).toBe('9');
     expect(final.failure_history.records.map(f=>f.id)).toEqual(['1','2','3','4','5','6','7','8','9']);
     await save(page,info,'wear-repair-upkeep-failure');
+  });
+});
+
+test.describe('wide crowding upkeep', () => {
+  test.use({serverArgs:['--mode','autonomous','--width','3','--height','3','--occupancy','1','--integrity','4294967295','--upkeep','4294967295','--crowding-upkeep','4294967295','--crowding-threshold','8','--ticks','1']});
+  test('current and recorded upkeep remain exact above u32 maximum', async ({page,server}) => {
+    await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
+    await page.locator('#agent').selectOption('1');
+    await expect(page.locator('#inspection')).toContainText('Next-tick effective upkeep 8589934590 (base 4294967295 + crowding 4294967295; displayed neighbourhood)');
+    expect((await snapshot(page,server)).cells[0].next_tick_upkeep).toBe('8589934590');
+    await page.locator('#step').click(); await expect(page.getByRole('status')).toHaveText('completed');
+    await expect(page.locator('#inspection')).toContainText('occupied neighbours 8/8, effective upkeep 8589934590 (base 4294967295 + crowding 4294967295), extra wear 0');
+    const final=await snapshot(page,server);
+    expect(final.count).toBe('0'); expect(final.totals.failures).toBe('9');
+    expect(final.failure_history.records[0]).toMatchObject({occupied_neighbors:8,upkeep:'8589934590',base_upkeep:4294967295,crowding_upkeep:4294967295,action_wear:0});
   });
 });
 

@@ -352,6 +352,15 @@ fn fixed_tick_results_ignore_observation_rate_backpressure_and_disconnect() {
             height: 6,
             ..ExperimentConfig::default()
         });
+        check_observation_independence(ExperimentConfig {
+            width: 8,
+            height: 6,
+            maintenance: Some(virtual_life::engine::Maintenance {
+                crowding_upkeep: 0,
+                ..Default::default()
+            }),
+            ..ExperimentConfig::default()
+        });
         let _ = finished.send(());
     });
     completion
@@ -364,9 +373,13 @@ fn wear_crowding_v2_seed_one_records_exact_tick_ten_world_and_failures() {
     let config = ExperimentConfig {
         width: 8,
         height: 6,
+        maintenance: Some(virtual_life::engine::Maintenance {
+            crowding_upkeep: 0,
+            ..Default::default()
+        }),
         ..ExperimentConfig::default()
     };
-    assert_eq!(config.protocol(), "wear-repair crowding v2");
+    assert_eq!(config.protocol(), "wear-repair crowding v3");
     let (mut world, mut random, info) = config.initialize().unwrap();
     for _ in 0..10 {
         world
@@ -448,6 +461,111 @@ fn wear_crowding_v2_seed_one_records_exact_tick_ten_world_and_failures() {
             (2, 8, 3, 5, Upkeep, 1, 1, 0),
             (17, 10, 3, 1, CopyWear, 2, 1, 2),
         ]
+    );
+}
+
+#[test]
+fn wear_crowding_v3_seed_one_records_exact_tick_ten_world_and_failure_costs() {
+    use virtual_life::engine::FailureReason::{CopyWear, MoveWear, Upkeep};
+    use virtual_life::engine::{Events, Failure};
+    let config = ExperimentConfig {
+        width: 8,
+        height: 6,
+        ..ExperimentConfig::default()
+    };
+    assert_eq!(config.protocol(), "wear-repair crowding v3");
+    let (mut world, mut random, info) = config.initialize().unwrap();
+    for _ in 0..10 {
+        world
+            .step(&experiment::proposals(&world, &mut random))
+            .unwrap();
+    }
+    let mut expected = vec![None; 48];
+    for (id, x, y, group, integrity) in [
+        (23, 3, 0, 0, 7),
+        (6, 5, 0, 1, 6),
+        (5, 2, 1, 1, 6),
+        (16, 3, 1, 1, 4),
+        (27, 7, 1, 1, 9),
+        (24, 0, 2, 3, 3),
+        (20, 4, 2, 1, 10),
+        (26, 0, 3, 2, 10),
+        (25, 2, 3, 1, 10),
+        (9, 6, 3, 2, 8),
+        (10, 1, 4, 2, 10),
+        (8, 3, 4, 1, 7),
+        (21, 6, 4, 1, 10),
+        (3, 7, 4, 2, 7),
+        (22, 6, 5, 1, 4),
+    ] {
+        expected[y * 8 + x] = Some(Agent {
+            id,
+            value: 0,
+            weights: config.bundles[group],
+            integrity,
+        });
+    }
+    assert_eq!(world.cells(), expected);
+    assert_eq!(
+        (world.tick(), world.next_id(), world.discarded_failures()),
+        (10, 28, 0)
+    );
+    assert_eq!(info.counts(world.cells()), [1, 9, 4, 1]);
+    assert_eq!(
+        world.totals(),
+        Events {
+            moves: 31,
+            creations: 13,
+            removals: 12,
+            value_changes: 0,
+            repairs: 54,
+            failures: 12
+        }
+    );
+    let expected_failures: Vec<_> = [
+        (12, 5, 7, 2, MoveWear, 2, 2, 0, 1, 1),
+        (7, 5, 0, 3, MoveWear, 2, 2, 0, 1, 1),
+        (11, 5, 4, 5, MoveWear, 2, 3, 0, 1, 1),
+        (14, 7, 0, 4, Upkeep, 1, 2, 0, 1, 0),
+        (13, 8, 0, 0, Upkeep, 1, 2, 0, 1, 0),
+        (17, 8, 3, 1, Upkeep, 2, 5, 1, 2, 0),
+        (2, 8, 3, 5, Upkeep, 1, 3, 0, 1, 0),
+        (4, 9, 2, 2, Upkeep, 1, 5, 1, 2, 0),
+        (19, 10, 1, 3, Upkeep, 1, 5, 1, 2, 0),
+        (15, 10, 4, 3, CopyWear, 3, 3, 0, 1, 2),
+        (1, 10, 2, 4, MoveWear, 2, 4, 0, 1, 1),
+        (18, 10, 7, 5, MoveWear, 2, 3, 0, 1, 1),
+    ]
+    .into_iter()
+    .map(
+        |(
+            id,
+            tick,
+            x,
+            y,
+            reason,
+            integrity_before,
+            occupied_neighbors,
+            crowding_upkeep,
+            upkeep,
+            action_wear,
+        )| Failure {
+            id,
+            tick,
+            position: Position::new(x, y),
+            reason,
+            integrity_before,
+            occupied_neighbors,
+            base_upkeep: 1,
+            crowding_upkeep,
+            upkeep,
+            action_wear,
+        },
+    )
+    .collect();
+    assert_eq!(
+        world.failures().iter().copied().collect::<Vec<_>>(),
+        expected_failures
     );
 }
 

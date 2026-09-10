@@ -51,7 +51,25 @@ fn run() -> Result<(), String> {
                 print!(" weights={:?}", agent.weights.0);
             }
             if let Some(rules) = world.maintenance() {
-                print!(" integrity={}/{}", agent.integrity, rules.maximum);
+                let cost = virtual_life::engine::upkeep_at(
+                    world.width(),
+                    world.height(),
+                    world.cells(),
+                    virtual_life::engine::Position::new(
+                        index % world.width(),
+                        index / world.width(),
+                    ),
+                    rules,
+                )?;
+                print!(
+                    " integrity={}/{} current_occupied_neighbors={} next_tick_upkeep={} (base={} crowding={}; displayed neighborhood)",
+                    agent.integrity,
+                    rules.maximum,
+                    cost.occupied_neighbors,
+                    cost.effective_upkeep,
+                    cost.base_upkeep,
+                    cost.crowding_upkeep
+                );
             }
             println!();
         }
@@ -64,13 +82,16 @@ fn run() -> Result<(), String> {
         );
         for failure in world.failures() {
             println!(
-                "failure: id={} tick={} at=({},{}) reason={} integrity_before={} upkeep={} action_wear={}",
+                "failure: id={} tick={} at=({},{}) reason={} integrity_before={} occupied_neighbors={} base_upkeep={} crowding_upkeep={} upkeep={} action_wear={}",
                 failure.id,
                 failure.tick,
                 failure.position.x,
                 failure.position.y,
                 failure.reason.label(),
                 failure.integrity_before,
+                failure.occupied_neighbors,
+                failure.base_upkeep,
+                failure.crowding_upkeep,
                 failure.upkeep,
                 failure.action_wear
             );

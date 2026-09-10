@@ -3,15 +3,25 @@ import assert from 'node:assert/strict';
 import { HISTORY_LIMIT, recordSample, sampleDescription, inspectionText, groupColor, groupLabel } from '../web/display.js';
 
 test('inspection reports integrity and engine failure evidence without inventing a cause', () => {
-  const sample={width:3,tick:'4',experiment:{maintenance:{maximum:10}},cells:[{id:'1',group:0,weights:[2,4,1,3],integrity:6}],failure_history:{discarded:'0',records:[]}};
+  const sample={width:3,tick:'4',experiment:{maintenance:{maximum:10,upkeep:1}},cells:[{id:'1',group:0,weights:[2,4,1,3],integrity:6,occupied_neighbors:5,next_tick_upkeep:'2',crowding_upkeep:1}],failure_history:{discarded:'0',records:[]}};
   assert.match(inspectionText(sample,'1'),/copy, repair.*Integrity 6\/10/);
   assert.match(inspectionText(sample,'1'),/Base weights \(wait, move, copy, repair\): 2, 4, 1, 3/);
+  assert.match(inspectionText(sample,'1'),/Current occupied neighbours 5\/8 · Next-tick effective upkeep 2 \(base 1 \+ crowding 1; displayed neighbourhood\)/);
   sample.cells=[null];
   assert.match(inspectionText(sample,'1'),/No failure record available/);
-  sample.failure_history.records=[{id:'1',tick:'3',position:{x:1,y:2},reason:'move wear',integrity_before:2,upkeep:1,action_wear:1}];
+  sample.failure_history.records=[{id:'1',tick:'3',position:{x:1,y:2},reason:'move wear',integrity_before:2,occupied_neighbors:4,base_upkeep:1,crowding_upkeep:0,upkeep:'1',action_wear:1}];
   assert.match(inspectionText(sample,'1'),/failed at tick 3.*move wear.*starting integrity 2.*upkeep 1.*extra wear 1/);
+  assert.match(inspectionText(sample,'1'),/occupied neighbours 4\/8, effective upkeep 1 \(base 1 \+ crowding 0\)/);
   sample.failure_history={discarded:'200',records:[]};
   assert.match(inspectionText(sample,'1'),/record has been discarded.*200/);
+});
+
+test('inspection and historic failure preserve effective upkeep above u32 maximum', () => {
+  const sample={width:3,tick:'0',experiment:{maintenance:{maximum:4294967295,upkeep:4294967295}},cells:[{id:'1',group:0,weights:[0,0,0,1],integrity:4294967295,occupied_neighbors:8,next_tick_upkeep:'8589934590',crowding_upkeep:4294967295}],failure_history:{discarded:'0',records:[]}};
+  assert.match(inspectionText(sample,'1'),/Next-tick effective upkeep 8589934590 \(base 4294967295 \+ crowding 4294967295; displayed neighbourhood\)/);
+  sample.cells=[null]; sample.tick='1';
+  sample.failure_history.records=[{id:'1',tick:'1',position:{x:0,y:0},reason:'upkeep',integrity_before:4294967295,occupied_neighbors:8,base_upkeep:4294967295,crowding_upkeep:4294967295,upkeep:'8589934590',action_wear:0}];
+  assert.match(inspectionText(sample,'1'),/occupied neighbours 8\/8, effective upkeep 8589934590 \(base 4294967295 \+ crowding 4294967295\), extra wear 0/);
 });
 
 test('history stays bounded, deduplicates ticks, and does not fabricate missed samples', () => {
