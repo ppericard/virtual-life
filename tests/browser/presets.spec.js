@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, openPanel, inspectAgent } from './fixtures.js';
 
 const runHeader = 'x-virtuallife-run';
 async function read(page, server) {
@@ -14,7 +14,7 @@ async function save(page, info, name) {
 test.use({serverArgs: ['--mode', 'autonomous', '--width', '8', '--height', '6', '--ticks', '12', '--tick-ms', '60000', '--crowding-threshold', '3', '--crowding-upkeep', '2']});
 
 test('preset choices stay pending until restart and synchronize both pages to the new run', async ({page, context, server}, info) => {
-  await page.goto(server.url);
+  await page.goto(server.url); await openPanel(page, 'New experiment');
   await expect(page.locator('#current-preset')).toHaveText('Current run: Original.');
   for (const name of ['Original', 'Moderate movement', 'Wide movement range', 'Lower copying']) {
     await expect(page.getByRole('button', {name, exact: true})).toBeVisible();
@@ -27,10 +27,10 @@ test('preset choices stay pending until restart and synchronize both pages to th
   await page.locator('#step').click(); await expect(page.locator('#tick')).toHaveText('1');
   const first = await read(page, server);
   const agent = first.sample.cells.find(Boolean).id;
-  await page.locator('#agent').selectOption(agent);
-  const second = await context.newPage(); await second.goto(server.url);
+  await inspectAgent(page, agent);
+  const second = await context.newPage(); await second.goto(server.url); await openPanel(second, 'New experiment');
   await expect(second.locator('#tick')).toHaveText('1');
-  await second.locator('#agent').selectOption(agent);
+  await inspectAgent(second, agent);
   for (let tick = 2; tick <= 12; tick++) {
     await page.locator('#step').click(); await expect(page.locator('#tick')).toHaveText(String(tick));
   }
@@ -79,6 +79,7 @@ test('preset choices stay pending until restart and synchronize both pages to th
   expect(after.sample.experiment.maintenance).toEqual(before.sample.experiment.maintenance);
   expect(writes).toBe(1);
   await page.reload();
+  await openPanel(page, 'New experiment');
   await expect(page.locator('#current-preset')).toHaveText('Current run: Moderate movement.');
   await expect(page.getByRole('button', {name: 'Moderate movement', exact: true})).toHaveAttribute('aria-pressed', 'true');
   await page.locator('#preset-controls summary').click();
@@ -91,7 +92,7 @@ test('preset choices stay pending until restart and synchronize both pages to th
 test.describe('custom preset recovery', () => {
   test.use({serverArgs: ['--mode', 'autonomous', '--width', '9', '--height', '7', '--occupancy', '0.4', '--bundles', '1,2,3,4;4,3,2,1', '--proportions', '3,2', '--ticks', '12', '--tick-ms', '60000', '--sample-every', '7', '--integrity', '17', '--upkeep', '2', '--crowding-threshold', '3', '--crowding-upkeep', '2', '--move-wear', '3', '--copy-wear', '4', '--repair', '6']});
   test('pending named selection can return to current custom settings and a random preset replays', async ({page, server}, info) => {
-    await page.goto(server.url);
+    await page.goto(server.url); await openPanel(page, 'New experiment');
     await expect(page.locator('#current-preset')).toHaveText('Current run: Custom settings.');
     const before = await read(page, server);
     expect(before.sample.experiment.preset).toBeNull();
@@ -127,6 +128,7 @@ test.describe('custom preset recovery', () => {
     await save(page, info, 'preset-wide-movement-narrow');
     await expect(page.getByRole('button', {name:'Keep current custom settings', exact:true})).toHaveCount(0);
     await page.reload();
+    await openPanel(page, 'New experiment');
     await expect(page.locator('#current-preset')).toHaveText('Current run: Wide movement range.');
     const replay = page.waitForResponse('**/api/restart');
     await page.locator('#restart-seed').click();
@@ -137,7 +139,7 @@ test.describe('custom preset recovery', () => {
 });
 
 test('preset acknowledgement locks choices and an older snapshot cannot undo a later pending edit', async ({page,server}) => {
-  await page.goto(server.url); await expect(page.locator('#current-preset')).toHaveText('Current run: Original.');
+  await page.goto(server.url); await openPanel(page, 'New experiment'); await expect(page.locator('#current-preset')).toHaveText('Current run: Original.');
   const oldRead = Promise.withResolvers(), releaseRead = Promise.withResolvers();
   const applied = Promise.withResolvers(), releaseReply = Promise.withResolvers();
   let reads = 0, writes = 0;
@@ -172,7 +174,7 @@ test('preset acknowledgement locks choices and an older snapshot cannot undo a l
 });
 
 test('a lost preset reply is reconciled from the real run without retrying', async ({page,server}) => {
-  await page.goto(server.url); await expect(page.locator('#current-preset')).toHaveText('Current run: Original.');
+  await page.goto(server.url); await openPanel(page, 'New experiment'); await expect(page.locator('#current-preset')).toHaveText('Current run: Original.');
   const held = Promise.withResolvers(), release = Promise.withResolvers();
   let writes = 0;
   await page.route('**/api/snapshot', async route => { held.resolve(); await release.promise; await route.continue(); });
@@ -200,8 +202,8 @@ test('a lost preset reply is reconciled from the real run without retrying', asy
 
 for (const kind of ['control','restart']) {
   test(`a late old ${kind} reply cannot roll back the current preset or pending choice`, async ({page,context,server}) => {
-    await page.goto(server.url); await expect(page.locator('#current-preset')).toHaveText('Current run: Original.');
-    const second = await context.newPage(); await second.goto(server.url);
+    await page.goto(server.url); await openPanel(page, 'New experiment'); await expect(page.locator('#current-preset')).toHaveText('Current run: Original.');
+    const second = await context.newPage(); await second.goto(server.url); await openPanel(second, 'New experiment');
     await expect(second.locator('#current-preset')).toHaveText('Current run: Original.');
     const held = Promise.withResolvers(), release = Promise.withResolvers();
     let writes = 0;
@@ -234,7 +236,7 @@ for (const kind of ['control','restart']) {
 test.describe('zero-tick preset run', () => {
   test.use({serverArgs:['--mode','autonomous','--ticks','0']});
   test('a preset applied to a zero-tick run stays completed', async ({page,server}, info) => {
-    await page.goto(server.url); await expect(page.getByRole('status')).toHaveText('completed');
+    await page.goto(server.url); await openPanel(page, 'New experiment'); await expect(page.getByRole('status')).toHaveText('completed');
     await page.getByRole('button', {name:'Lower copying',exact:true}).click();
     await page.locator('#restart-seed').click();
     await expect(page.locator('#current-preset')).toHaveText('Current run: Lower copying.');
@@ -258,6 +260,7 @@ for (const mode of ['demo','random']) {
       await expect(page.locator('#preset-controls')).toBeHidden();
       await expect(page.locator('#preset-options button')).toHaveCount(0);
       if (mode === 'random') {
+        await openPanel(page, 'New experiment');
         await page.locator('#restart-seed').click();
         await expect(page.locator('#run-message')).toContainText('New experiment connected.');
         expect((await read(page,server)).sample.experiment.survival).toBe('random');

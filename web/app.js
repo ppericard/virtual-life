@@ -1,10 +1,55 @@
-import { drawGrid, drawPlot, gridPosition, recordSample, renderReadouts, renderExperiment, groupLabel, sampleDescription } from './display.js';
+import { drawGrid, drawPlot, fitGrid, gridPosition, recordSample, renderReadouts, renderExperiment, groupLabel, sampleDescription } from './display.js';
 const byId = id => document.getElementById(id);
 const history = [];
 const runHeader = 'X-VirtualLife-Run';
 let runId = null;
 let pendingPreset = '';
 let sample, selected = '', connected = false, busy = false, receipt = null, commandVersion = 0;
+
+const panelTriggers = {inspection: 'inspect-toggle', analysis: 'analysis-toggle', details: 'details-toggle', 'new-experiment': 'new-experiment-toggle'};
+const narrowWorkspace = matchMedia('(max-width: 720px)');
+let lastOpenedPanel = 'inspection';
+let inspectionReturn = byId('inspect-toggle');
+function showPanel(name, open, focus = true, origin = byId(panelTriggers[name])) {
+  const panel = byId(`${name}-panel`);
+  if (open) {
+    // Desktop keeps inspection beside one secondary region; narrow screens
+    // show the requested panel so the inspector cannot cover other controls.
+    for (const other of Object.keys(panelTriggers)) {
+      if (other !== name && (narrowWorkspace.matches || name !== 'inspection' && other !== 'inspection')) showPanel(other, false, false);
+    }
+    lastOpenedPanel = name;
+  }
+  if (open && name === 'inspection') inspectionReturn = origin;
+  panel.hidden = !open;
+  byId(panelTriggers[name]).setAttribute('aria-expanded', String(open));
+  if (focus) {
+    const target = open ? (name === 'inspection' ? byId('agent') : panel)
+      : name === 'inspection' ? inspectionReturn : byId(panelTriggers[name]);
+    target.focus({preventScroll: true});
+  }
+  schedulePaint();
+}
+narrowWorkspace.addEventListener('change', event => {
+  if (!event.matches) return;
+  const openPanels = Object.keys(panelTriggers).filter(name => !byId(`${name}-panel`).hidden);
+  if (openPanels.length < 2) return;
+  for (const name of openPanels) if (name !== lastOpenedPanel) {
+    const panel = byId(`${name}-panel`);
+    showPanel(name, false, panel.contains(document.activeElement));
+  }
+});
+for (const button of document.querySelectorAll('[data-panel]')) button.addEventListener('click', () => {
+  const name = button.dataset.panel;
+  showPanel(name, byId(`${name}-panel`).hidden);
+});
+for (const button of document.querySelectorAll('[data-close]')) button.addEventListener('click', () => showPanel(button.dataset.close, false));
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  const panel = event.target.closest('.inspection, .secondary-panel');
+  if (panel && !panel.hidden) { showPanel(panel.id.replace('-panel', ''), false); event.preventDefault(); }
+  else if (!byId('inspection-panel').hidden) { showPanel('inspection', false); event.preventDefault(); }
+});
 
 function controls() {
   const ready = connected && !busy && sample;
@@ -54,6 +99,8 @@ function syncPresets(info) {
 }
 function paintCanvases() {
   if (!sample) return;
+  const frame = byId('world-frame');
+  fitGrid(byId('grid'), sample, frame.clientWidth, frame.clientHeight);
   drawGrid(byId('grid'), sample, selected);
   drawPlot(byId('plot'), history);
 }
@@ -61,6 +108,7 @@ function render() {
   renderReadouts(sample, selected);
   renderExperiment(sample);
   byId('restart-controls').hidden = !sample.experiment;
+  byId('new-experiment-toggle').hidden = !sample.experiment;
   const selector = byId('agent');
   selector.replaceChildren(new Option('Choose an agent', ''));
   for (const agent of sample.cells.filter(Boolean)) selector.add(new Option(`ID ${agent.id} · ${sample.experiment ? `Group ${groupLabel(agent.group)}` : `Value ${agent.value}`}`, agent.id));
@@ -190,11 +238,18 @@ async function command(name, restart = false) {
 }
 for (const name of ['pause', 'resume', 'step']) byId(name).addEventListener('click', () => command(name));
 for (const name of ['seed', 'random']) byId(`restart-${name}`).addEventListener('click', () => command(name, true));
-byId('agent').addEventListener('change', event => { selected = event.target.value; if (sample) render(); });
+byId('agent').addEventListener('change', event => {
+  selected = event.target.value;
+  if (sample) { showPanel('inspection', true, false, inspectionReturn); render(); }
+});
 byId('grid').addEventListener('click', event => {
   if (!sample) return;
   const index = gridPosition(byId('grid'), event, sample);
   selected = sample.cells[index]?.id || '';
+  if (selected) {
+    byId('grid').focus({preventScroll: true});
+    showPanel('inspection', true, false, byId('grid'));
+  }
   render();
 });
 // Resize only repaints retained data, including while paused or disconnected.
@@ -204,7 +259,7 @@ function schedulePaint() {
   paintFrame = requestAnimationFrame(() => { paintFrame = 0; paintCanvases(); });
 }
 const canvasResize = new ResizeObserver(schedulePaint);
-for (const id of ['grid', 'plot']) canvasResize.observe(byId(id));
+for (const id of ['world-frame', 'plot']) canvasResize.observe(byId(id));
 function watchPixelRatio() {
   matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener('change', () => {
     schedulePaint();

@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, openPanel, inspectAgent } from './fixtures.js';
 
 const colors = ['#0072b2', '#d55e00', '#009e73', '#cc79a7'];
 async function snapshot(page, server) { return (await page.request.get(`${server.url}/api/snapshot`)).json(); }
@@ -15,7 +15,7 @@ test.describe('stored selected action inspection', () => {
     await expect(page.locator('#tick')).toHaveText('0');
     const initial=await snapshot(page,server);
     expect(initial.cells.every(a=>a.last_action===null)).toBe(true);
-    await page.locator('#agent').selectOption('1');
+    await inspectAgent(page, '1');
     await expect(page.locator('#inspection')).toContainText('Last selected action: Not yet acted');
     await save(page,info,'action-state-initial');
     await page.locator('#step').click();
@@ -35,7 +35,7 @@ test.describe('stored selected action inspection', () => {
     await expect(page.getByRole('status')).toHaveText('completed');
     await page.reload();
     await expect(page.locator('#tick')).toHaveText('2');
-    await page.locator('#agent').selectOption('1');
+    await inspectAgent(page, '1');
     await expect(page.locator('#inspection')).toContainText('Last selected action: Move (success not implied)');
     expect((await snapshot(page,server)).totals.moves).toBe('0');
   });
@@ -51,12 +51,13 @@ test.describe('wear and repair default experiment', () => {
     await expect(page.locator('#configuration')).toContainText('Replaying wear-repair v1 requires its earlier code; crowding v2 requires --crowding-upkeep 0 with matching settings.');
     await expect(page.locator('#configuration')).toContainText('base upkeep 1, plus 1 when at least 5/8 starting neighbours are occupied');
     await expect(page.locator('#choice-rule')).toContainText('Copy chance is scaled by the fraction of empty neighbours');
+    await openPanel(page, 'Details');
     let previous=await snapshot(page,server);
     expect(previous.experiment.survival).toBe('wear-repair');
     expect(previous.experiment.protocol).toBe('wear-repair crowding v3');
     expect(previous.experiment.maintenance).toMatchObject({crowding_threshold:5,crowding_upkeep:1});
     expect(previous.experiment.groups.map(g=>g.weights)).toEqual([[2,4,1,3],[2,2,2,4],[4,1,1,4],[1,5,2,2]]);
-    const selected=previous.cells.find(Boolean); await page.locator('#agent').selectOption(selected.id);
+    const selected=previous.cells.find(Boolean); await inspectAgent(page, selected.id);
     await expect(page.locator('#inspection')).toContainText('Integrity 10/10');
     await save(page,info,'wear-repair-initial');
     let recovered=false;
@@ -65,7 +66,7 @@ test.describe('wear and repair default experiment', () => {
       const current=await snapshot(page,server);
       const recovering=current.cells.filter(Boolean).find(agent=>previous.cells.some(old=>old?.id===agent.id && old.integrity<agent.integrity));
       if(recovering&&!recovered) {
-        await page.locator('#agent').selectOption(recovering.id);
+        await inspectAgent(page, recovering.id);
         await expect(page.locator('#inspection')).toContainText(`Integrity ${recovering.integrity}/10`);
         expect(previous.cells.find(agent=>agent?.id===recovering.id).weights).toEqual(recovering.weights);
         await save(page,info,'wear-repair-recovery'); recovered=true;
@@ -74,11 +75,11 @@ test.describe('wear and repair default experiment', () => {
     }
     expect(recovered).toBe(true); expect(Number(previous.totals.repairs)).toBeGreaterThan(0);
     expect(previous.experiment.groups.map(g=>g.count)).toEqual(['1','9','4','1']);
-    await page.locator('#agent').selectOption('23');
+    await inspectAgent(page, '23');
     await expect(page.locator('#inspection')).toHaveText('ID 23 · Group A · Base weights (wait, move, copy, repair): 2, 4, 1, 3 · Position (3, 0) · Integrity 7/10 · Current occupied neighbours 2/8 · Next-tick effective upkeep 1 (base 1 + crowding 0; displayed neighbourhood) · Last selected action: Move (success not implied)');
     await expect(page.locator('#plot')).toHaveAttribute('aria-label',/Tick 10: Group A 1, Group B 9, Group C 4, Group D 1; total 15/);
     await save(page,info,'wear-crowding-v3-tick10');
-    await page.locator('#agent').selectOption('17');
+    await inspectAgent(page, '17');
     await expect(page.locator('#inspection')).toHaveText('Agent 17 failed at tick 8 · upkeep · Position (3, 1) · starting integrity 2, occupied neighbours 5/8, effective upkeep 2 (base 1 + crowding 1), extra wear 0.');
     expect(previous.cells[1*8+3].id).toBe('16'); // Historical failure survives a different current occupant.
     await save(page,info,'wear-crowding-v3-failure');
@@ -88,7 +89,7 @@ test.describe('wear and repair default experiment', () => {
     expect(final.failure_history.records.length).toBeLessThanOrEqual(128);
     expect(Number(final.failure_history.discarded)+final.failure_history.records.length).toBe(Number(final.totals.failures));
     const failure=final.failure_history.records.at(-1);
-    expect(failure).toBeTruthy(); await page.locator('#agent').selectOption(failure.id);
+    expect(failure).toBeTruthy(); await inspectAgent(page, failure.id);
     await expect(page.locator('#inspection')).toContainText(`failed at tick ${failure.tick} · ${failure.reason}`);
     await save(page,info,'wear-repair-completed');
     await page.setViewportSize({width:390,height:950});
@@ -109,7 +110,7 @@ test.describe('exact upkeep failure evidence', () => {
   test.use({serverArgs:['--mode','autonomous','--width','3','--height','3','--occupancy','1','--bundles','1,0,0,0','--proportions','1','--integrity','6','--ticks','3']});
   test('selected individual shows exact-zero upkeep failure at completion', async ({page,server},info) => {
     await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
-    await page.locator('#agent').selectOption('1');
+    await inspectAgent(page, '1');
     await expect(page.locator('#inspection')).toContainText('Current occupied neighbours 8/8 · Next-tick effective upkeep 2 (base 1 + crowding 1; displayed neighbourhood)');
     await save(page,info,'wear-crowding-v3-inspection');
     for(let tick=1;tick<=2;tick++) {
@@ -128,7 +129,7 @@ test.describe('wide crowding upkeep', () => {
   test.use({serverArgs:['--mode','autonomous','--width','3','--height','3','--occupancy','1','--integrity','4294967295','--upkeep','4294967295','--crowding-upkeep','4294967295','--crowding-threshold','8','--ticks','1']});
   test('current and recorded upkeep remain exact above u32 maximum', async ({page,server}) => {
     await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
-    await page.locator('#agent').selectOption('1');
+    await inspectAgent(page, '1');
     await expect(page.locator('#inspection')).toContainText('Next-tick effective upkeep 8589934590 (base 4294967295 + crowding 4294967295; displayed neighbourhood)');
     expect((await snapshot(page,server)).cells[0].next_tick_upkeep).toBe('8589934590');
     await page.locator('#step').click(); await expect(page.getByRole('status')).toHaveText('completed');
@@ -143,15 +144,16 @@ test.describe('bounded failures independent of sampling', () => {
   test.use({serverArgs:['--mode','autonomous','--width','20','--height','20','--occupancy','1','--integrity','1','--ticks','600','--sample-every','1000','--tick-ms','0']});
   test('discarded causes are labelled while retained outcomes survive sparse observation', async ({page,server},info) => {
     await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
-    await page.locator('#agent').selectOption('1');
+    await inspectAgent(page, '1');
     await page.getByRole('button',{name:'Resume',exact:true}).click(); await expect(page.getByRole('status')).toHaveText('completed');
     await expect(page.locator('#inspection')).toContainText('record has been discarded');
     await expect(page.locator('#failure-summary')).toContainText('272 older records discarded');
     const final=await snapshot(page,server);
     expect(final.failure_history.records).toHaveLength(128); expect(final.failure_history.records[0].id).toBe('273');
     expect(final.failure_history.records.every(f=>f.tick==='1'&&f.reason==='upkeep')).toBe(true);
-    await page.locator('#agent').selectOption('400'); await expect(page.locator('#inspection')).toContainText('failed at tick 1 · upkeep');
+    await inspectAgent(page, '400'); await expect(page.locator('#inspection')).toContainText('failed at tick 1 · upkeep');
     await expect(page.locator('#samples')).toContainText('not a complete recording');
+    await openPanel(page, 'Analysis');
     await page.getByText('Recent failure records',{exact:true}).click();
     await expect(page.locator('#failure-list li')).toHaveCount(128);
     await save(page,info,'wear-repair-bounded-failures');
@@ -210,7 +212,7 @@ test.describe('autonomous visual experiment', () => {
   test('new autonomous experiment clears history and selection without retrying controls', async ({page,server}) => {
     await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
     const initial=await snapshot(page,server), agent=initial.cells.find(Boolean);
-    await page.locator('#agent').selectOption(agent.id);
+    await inspectAgent(page, agent.id);
     await page.getByRole('button',{name:'Single step'}).click(); await expect(page.locator('#tick')).toHaveText('1');
     await server.restart();
     await expect(page.locator('#run-message')).toContainText('New experiment connected');

@@ -95,3 +95,14 @@ export const test = base.extend({
   },
 });
 export { expect };
+
+// Follow the production disclosure controls; never force hidden UI into view.
+export async function openPanel(page, name) {
+  const button = page.getByRole('button', {name, exact: true});
+  if (await button.getAttribute('aria-expanded') !== 'true') await button.click();
+  await expect(page.locator(`#${await button.getAttribute('aria-controls')}`)).toBeVisible();
+}
+export async function inspectAgent(page, id) {
+  await openPanel(page, 'Inspect');
+  await page.locator('#agent').selectOption(id);
+}
