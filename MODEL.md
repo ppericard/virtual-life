@@ -115,6 +115,18 @@ Multiplying all tickets by eight avoids rounding fractional Copy shares. With `(
 
 Read occupancy from the unchanged starting world, including wrapped neighbours and individuals that will fail upkeep this tick. Do not count their squares as empty in advance. If the chooser itself fails upkeep it makes no draw. Move and Repair probabilities remain unchanged; selected Move/Copy still draw uniformly among **all eight neighbours**, before affordability, with no filtering or retry. Crowding changes Copy intent frequency, not the existing rules for whether an attempt succeeds. Full-neighbourhood Copy-only individuals choose Wait and pay only upkeep that tick.
 
+### Selected-action memory
+
+**10 September 2026 — Pierre's decision:** wear-repair individuals have a small probabilistic action automaton with states **Wait, Move, Copy and Repair**. Its stored state is the last action selected, not a successful event, an inherited property or an intention for the next tick. Initial individuals and newborns have **no previous action** (not yet acted). That initial value is not a fifth selectable action.
+
+The shared transition-weight function reads the current state, the individual's actual inherited weights, positive integrity after mandatory upkeep, and the eight unchanged starting neighbours. In this first increment every current state, including the initial value, returns the exact crowding tickets above. State and integrity do not alter those tickets yet. Thus the representation adds individual memory while preserving **wear-repair crowding v3**, its action/destination draw bounds and order, and all existing simulation outcomes. The next selected state comes from the same single action draw; there is no extra selection, draw or tick.
+
+For surviving individuals, stage the selected action alongside integrity before resolving destinations. An occupied or conflicted Move remains **Move**, and a rejected Copy remains **Copy**, with the same attempted wear as before. Missing proposals mean **Wait**, replacing any previous state. An upkeep failure makes no selection or random draw; an action-wear failure removes the individual before claiming. Neither leaves a surviving state to display. State, integrity, positions, IDs, counters and failure evidence commit atomically. Invalid batches or exhausted counters leave both buffers unchanged. Successful movement carries memory with the individual; a child inherits the parent's weight tuple and fresh maximum integrity, but starts with no selected action and first acts next tick.
+
+For example, with one occupied neighbour at the chosen destination, an individual at integrity 10 selects Move. Default upkeep costs 1 and attempted movement costs 1, leaving integrity 8. The occupied destination rejects the move: position is unchanged, accepted moves increase by zero, and stored state becomes **Move**. If its next proposal is missing, it pays the next tick's upkeep and stores **Wait**. The viewer must not infer either selection or success from position differences.
+
+Species/group identity remains the exact inherited weight tuple, regardless of integrity or action memory. The earlier random-removal policy and scripted fixture retain their existing actions and leave this wear-repair memory unused; they do not fabricate Wait/Move/Copy/Repair history. State-dependent preferences require a separate model decision.
+
 ### Worked conditions and boundaries
 
 The first table uses fewer than five occupied neighbours throughout, so effective upkeep is 1:

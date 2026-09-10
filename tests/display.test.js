@@ -2,6 +2,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { HISTORY_LIMIT, recordSample, sampleDescription, inspectionText, groupColor, groupLabel } from '../web/display.js';
 
+test('stored selected action is distinct from success and missing legacy data', () => {
+  const agent={id:'1',group:0,weights:[0,1,0,0],integrity:7};
+  const sample={width:3,tick:'1',experiment:{maintenance:{maximum:10}},cells:[agent]};
+  assert.match(inspectionText(sample,'1'), /Last selected action: Unavailable/);
+  agent.last_action=null;
+  assert.match(inspectionText(sample,'1'), /Last selected action: Not yet acted/);
+  for(const action of ['Wait','Move','Copy','Repair']) {
+    agent.last_action=action;
+    assert.ok(inspectionText(sample,'1').includes(`Last selected action: ${action} (success not implied)`));
+  }
+});
+
 test('inspection reports integrity and engine failure evidence without inventing a cause', () => {
   const sample={width:3,tick:'4',experiment:{maintenance:{maximum:10,upkeep:1}},cells:[{id:'1',group:0,weights:[2,4,1,3],integrity:6,occupied_neighbors:5,next_tick_upkeep:'2',crowding_upkeep:1}],failure_history:{discarded:'0',records:[]}};
   assert.match(inspectionText(sample,'1'),/copy, repair.*Integrity 6\/10/);

@@ -70,6 +70,12 @@ fn run() -> Result<(), String> {
                     cost.base_upkeep,
                     cost.crowding_upkeep
                 );
+                print!(
+                    " last_action={} (selected action; success not implied)",
+                    agent
+                        .last_action
+                        .map_or("not-yet-acted", virtual_life::engine::ActionState::label)
+                );
             }
             println!();
         }

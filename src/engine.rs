@@ -23,12 +23,34 @@ impl Position {
     }
 }
 
+/// Wear-repair memory of the last selected action, independent of its success.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ActionState {
+    Wait,
+    Move,
+    Copy,
+    Repair,
+}
+
+impl ActionState {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Wait => "Wait",
+            Self::Move => "Move",
+            Self::Copy => "Copy",
+            Self::Repair => "Repair",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Agent {
     pub id: u64,
     pub value: i64,
     pub weights: Weights,
     pub integrity: u32,
+    /// None before the first action, and unused by random-removal/demo worlds.
+    pub last_action: Option<ActionState>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -402,10 +424,10 @@ impl World {
 
         let tick = self.tick.checked_add(1).ok_or("tick counter exhausted")?;
         let mut accepted = Events::default();
-        let mut integrity: Vec<_> = self
+        let mut states: Vec<_> = self
             .current
             .iter()
-            .map(|cell| cell.map(|a| a.integrity))
+            .map(|cell| cell.map(|a| (a.integrity, a.last_action)))
             .collect();
         let mut failures = Vec::new();
         if let Some(rules) = self.maintenance {
@@ -460,7 +482,16 @@ impl World {
                     } else {
                         after_upkeep - wear
                     };
-                    integrity[source] = Some(remaining);
+                    // Record the selection before destination resolution can
+                    // replace a rejected Move/Copy with a physical wait.
+                    let selected = match action {
+                        Action::Wait => ActionState::Wait,
+                        Action::Move(_) => ActionState::Move,
+                        Action::Create(_) => ActionState::Copy,
+                        Action::Repair => ActionState::Repair,
+                        _ => unreachable!("validated wear-repair action"),
+                    };
+                    states[source] = Some((remaining, Some(selected)));
                 }
             }
         }
@@ -520,7 +551,7 @@ impl World {
             let Some(mut agent) = self.current[source] else {
                 continue;
             };
-            agent.integrity = integrity[source].unwrap();
+            (agent.integrity, agent.last_action) = states[source].unwrap();
             self.next[source] = Some(agent);
             match action.unwrap_or(Action::Wait) {
                 Action::Wait | Action::Repair => {}
@@ -531,6 +562,7 @@ impl World {
                 Action::Create(target) => {
                     self.next[target.y * self.width + target.x] = Some(Agent {
                         id: child_id,
+                        last_action: None,
                         integrity: self
                             .maintenance
                             .map_or(agent.integrity, |rules| rules.maximum),
@@ -562,6 +594,57 @@ impl World {
 #[cfg(test)]
 mod boundary_tests {
     use super::*;
+
+    #[test]
+    fn selected_memory_and_integrity_roll_back_at_every_wear_counter_and_id_limit() {
+        for exhausted in 0..7 {
+            let action = match exhausted {
+                1 => Action::Move(Position::new(2, 1)),
+                2 | 3 => Action::Create(Position::new(2, 1)),
+                4 => Action::Repair,
+                _ => Action::Wait,
+            };
+            let agent = Agent {
+                id: 1,
+                integrity: 10,
+                last_action: Some(if action == Action::Repair {
+                    ActionState::Move
+                } else {
+                    ActionState::Repair
+                }),
+                ..Agent::default()
+            };
+            let mut world = World::with_maintenance(
+                5,
+                5,
+                &[
+                    (Position::new(1, 1), agent),
+                    (
+                        Position::new(4, 4),
+                        Agent {
+                            id: 2,
+                            integrity: 1,
+                            ..agent
+                        },
+                    ),
+                ],
+                Maintenance::default(),
+            )
+            .unwrap();
+            match exhausted {
+                0 => world.tick = u64::MAX,
+                1 => world.totals.moves = u64::MAX,
+                2 => world.totals.creations = u64::MAX,
+                3 => world.next_id = u64::MAX,
+                4 => world.totals.repairs = u64::MAX,
+                5 => world.totals.removals = u64::MAX,
+                _ => world.totals.failures = u64::MAX,
+            }
+            let before = world.clone();
+            assert!(world.step(&[Proposal::new(1, action)]).is_err());
+            assert_eq!(world, before, "exhaustion case {exhausted}");
+        }
+    }
 
     #[test]
     fn wear_events_and_record_eviction_reject_atomically_at_counter_limits() {
