@@ -21,6 +21,8 @@ use tokio::{net::TcpListener, task::JoinSet, time::timeout};
 
 use crate::runner::{Command, Config, Controls, SNAPSHOT_CAPACITY, Snapshot, Status, Worker};
 
+mod presets;
+
 pub const MAX_CONNECTIONS: usize = 16;
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 const CONTROL_TIMEOUT: Duration = Duration::from_secs(1);
@@ -47,6 +49,8 @@ pub fn snapshot_json(sample: &Snapshot) -> Value {
             "seed": info.config.seed.to_string(),
             "generator": crate::experiment::GENERATOR, "version": env!("CARGO_PKG_VERSION"),
             "survival": info.config.survival(), "protocol": info.config.protocol(),
+            "preset": presets::matching(info),
+            "presets": info.config.maintenance.is_some().then_some(&presets::CATALOG),
             "maintenance": info.config.maintenance.map(|rules| json!({"maximum":rules.maximum,"upkeep":rules.upkeep,"crowding_threshold":rules.crowding_threshold,"crowding_upkeep":rules.crowding_upkeep,"move_wear":rules.move_wear,"copy_wear":rules.copy_wear,"repair":rules.repair})),
             "occupancy": format!("{}.{:06}", info.config.occupancy / 1_000_000, info.config.occupancy % 1_000_000),
             "groups": info.groups.iter().enumerate().map(|(index, group)| json!({
@@ -119,26 +123,58 @@ struct CommandInput {
 }
 
 #[derive(serde::Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum RestartInput {
-    Seed(String),
-    Random(bool),
+#[serde(deny_unknown_fields)]
+struct RestartInput {
+    #[serde(default, deserialize_with = "present")]
+    seed: Option<String>,
+    #[serde(default, deserialize_with = "present")]
+    random: Option<bool>,
+    #[serde(default, deserialize_with = "present")]
+    preset: Option<String>,
 }
 
-fn restart_seed(bytes: &[u8]) -> Result<Option<u64>, &'static str> {
-    let input: RestartInput = serde_json::from_slice(bytes)
-        .map_err(|_| "use exactly one decimal seed string or random: true")?;
-    match input {
-        RestartInput::Seed(seed)
-            if !seed.is_empty() && seed.bytes().all(|b| b.is_ascii_digit()) =>
-        {
-            seed.parse()
-                .map(Some)
-                .map_err(|_| "seed must be between 0 and 18446744073709551615")
-        }
-        RestartInput::Random(true) => Ok(None),
-        _ => Err("use a decimal seed string from 0 to 18446744073709551615, or random: true"),
+// Missing optional fields are allowed; explicit JSON null is not a valid value.
+fn present<'de, D: serde::Deserializer<'de>, T: serde::Deserialize<'de>>(
+    deserializer: D,
+) -> Result<Option<T>, D::Error> {
+    T::deserialize(deserializer).map(Some)
+}
+
+struct RestartChoice {
+    seed: Option<u64>,
+    preset: Option<&'static presets::Preset>,
+}
+
+fn restart_choice(bytes: &[u8]) -> Result<RestartChoice, &'static str> {
+    // Serde structs also accept positional sequences; this API accepts objects only.
+    if bytes
+        .iter()
+        .copied()
+        .find(|byte| !byte.is_ascii_whitespace())
+        != Some(b'{')
+    {
+        return Err("restart must be a JSON object");
     }
+    let input: RestartInput = serde_json::from_slice(bytes).map_err(
+        |_| "use exactly one decimal seed string or random: true, with an optional known preset",
+    )?;
+    let seed = match (input.seed, input.random) {
+        (Some(seed), None) if !seed.is_empty() && seed.bytes().all(|b| b.is_ascii_digit()) => seed
+            .parse()
+            .map(Some)
+            .map_err(|_| "seed must be between 0 and 18446744073709551615")?,
+        (None, Some(true)) => None,
+        _ => {
+            return Err(
+                "use a decimal seed string from 0 to 18446744073709551615, or random: true",
+            );
+        }
+    };
+    let preset = input
+        .preset
+        .map(|id| presets::find(&id).ok_or("unknown preset"))
+        .transpose()?;
+    Ok(RestartChoice { seed, preset })
 }
 
 #[derive(Clone)]
@@ -146,6 +182,7 @@ struct RunView {
     cache: Cache,
     controls: Controls,
     run_id: HeaderValue,
+    config: Config,
 }
 
 struct Experiment {
@@ -169,7 +206,6 @@ struct Api {
     // Only replacement/shutdown owns these handles. Snapshot reads and control
     // enqueueing use the short current lock, never the initialization/join lock.
     experiment: Arc<Mutex<Option<Experiment>>>,
-    config: Config,
     port: u16,
 }
 
@@ -362,14 +398,18 @@ impl Api {
             Ok(bytes) => bytes,
             Err(reply) => return self.current_response(reply),
         };
-        let seed = match restart_seed(&bytes) {
-            Ok(seed) => seed,
+        let choice = match restart_choice(&bytes) {
+            Ok(choice) => choice,
             Err(message) => return self.current_response(error(StatusCode::BAD_REQUEST, message)),
         };
         let api = self.clone();
         // Initialization and joins must outlive a lost HTTP reply. Only one
         // replacement can be in progress; no detached backlog of workers grows.
-        match tokio::task::spawn_blocking(move || api.replace_run(&headers, seed)).await {
+        match tokio::task::spawn_blocking(move || {
+            api.replace_run(&headers, choice.seed, choice.preset)
+        })
+        .await
+        {
             Ok(reply) => reply,
             Err(_) => self.current_response(error(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -378,14 +418,19 @@ impl Api {
         }
     }
 
-    fn replace_run(&self, headers: &hyper::HeaderMap, seed: Option<u64>) -> Response<Body> {
+    fn replace_run(
+        &self,
+        headers: &hyper::HeaderMap,
+        seed: Option<u64>,
+        preset: Option<&presets::Preset>,
+    ) -> Response<Body> {
         let Ok(mut owned) = self.experiment.try_lock() else {
             return self.current_response(error(
                 StatusCode::CONFLICT,
                 "restart already in progress; read the current snapshot",
             ));
         };
-        {
+        let mut config = {
             let run = self.current.lock().expect("current run lock");
             if headers.get_all(RUN_HEADER).iter().count() != 1
                 || headers.get(RUN_HEADER) != Some(&run.run_id)
@@ -398,18 +443,28 @@ impl Api {
                     &run.run_id,
                 );
             }
-        }
+            run.config.clone()
+        };
         if owned.is_none() {
             return self
                 .current_response(error(StatusCode::SERVICE_UNAVAILABLE, "server is stopping"));
         }
-        let mut config = self.config.clone();
         let Some(settings) = &mut config.experiment else {
             return self.current_response(error(
                 StatusCode::CONFLICT,
                 "seeded restart is available only in autonomous mode",
             ));
         };
+        if let Some(preset) = preset {
+            if settings.maintenance.is_none() {
+                return self.current_response(error(
+                    StatusCode::CONFLICT,
+                    "presets are available only in wear-repair mode",
+                ));
+            }
+            settings.bundles = preset.bundles.map(crate::engine::Weights).to_vec();
+            settings.proportions = preset.proportions.to_vec();
+        }
         settings.seed = match seed {
             Some(seed) => seed,
             None => {
@@ -476,7 +531,7 @@ fn start_experiment(config: Config) -> Result<(Worker, RunView, thread::JoinHand
         .parse()
         .expect("hexadecimal run ID is a valid header");
     let (sender, receiver) = mpsc::sync_channel(SNAPSHOT_CAPACITY);
-    let worker = Worker::spawn(config, Some(sender))?;
+    let worker = Worker::spawn(config.clone(), Some(sender))?;
     // Publish even when no HTTP client exists. This collector is not browser-owned.
     let first = receiver
         .recv_timeout(REQUEST_TIMEOUT)
@@ -501,6 +556,7 @@ fn start_experiment(config: Config) -> Result<(Worker, RunView, thread::JoinHand
         cache,
         controls: worker.controls(),
         run_id,
+        config,
     };
     Ok((worker, api, collector))
 }
@@ -521,11 +577,10 @@ pub async fn serve(
         return Err("the viewer must bind to loopback".into());
     }
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
-    let (worker, run, collector) = start_experiment(config.clone())?;
+    let (worker, run, collector) = start_experiment(config)?;
     let api = Api {
         current: Arc::new(Mutex::new(run)),
         experiment: Arc::new(Mutex::new(Some(Experiment { worker, collector }))),
-        config,
         port,
     };
     let mut connections = JoinSet::new();
@@ -590,7 +645,6 @@ mod tests {
         Api {
             current: Arc::new(Mutex::new(run)),
             experiment: Arc::new(Mutex::new(Some(Experiment { worker, collector }))),
-            config,
             port: 1234,
         }
     }
@@ -615,16 +669,35 @@ mod tests {
     }
 
     fn check_restart_initialization_and_cleanup() {
-        let mut api = autonomous_api();
+        let api = autonomous_api();
+        assert_eq!(
+            api.replace_run(
+                &precondition(&api),
+                Some(1),
+                presets::find("moderate-movement")
+            )
+            .status(),
+            StatusCode::OK
+        );
         let initial = api.current.lock().unwrap().clone();
+        let initial_snapshot = initial.cache.lock().unwrap().clone();
         let headers = precondition(&api);
         // Exercise the real initializer's rejection without touching the valid worker.
-        api.config.sample_every = 0;
+        api.current.lock().unwrap().config.sample_every = 0;
         assert_eq!(
-            api.replace_run(&headers, Some(42)).status(),
+            api.replace_run(&headers, Some(42), presets::find("lower-copying"))
+                .status(),
             StatusCode::INTERNAL_SERVER_ERROR
         );
         assert_eq!(api.current.lock().unwrap().run_id, initial.run_id);
+        assert_eq!(
+            *api.current.lock().unwrap().cache.lock().unwrap(),
+            initial_snapshot
+        );
+        assert_eq!(
+            api.current.lock().unwrap().config.experiment,
+            initial.config.experiment
+        );
         assert!(
             initial
                 .controls
@@ -634,17 +707,24 @@ mod tests {
                 .unwrap()
                 .applied
         );
-        api.config.sample_every = 7;
+        api.current.lock().unwrap().config.sample_every = 7;
         for seed in 0..24 {
             let old = api.current.lock().unwrap().clone();
             let headers = precondition(&api);
-            let reply = api.replace_run(&headers, Some(seed));
+            let reply = api.replace_run(&headers, Some(seed), None);
             assert_eq!(reply.status(), StatusCode::OK);
             assert_ne!(reply.headers()[RUN_HEADER], old.run_id);
             // Disconnected command channels prove replacement has joined, rather
             // than leaving an old paused/completed worker waiting indefinitely.
             assert!(old.controls.request(Command::Step).is_err());
             let current = api.current.lock().unwrap().clone();
+            assert_eq!(current.config.sample_every, 7);
+            assert_eq!(current.config.tick_interval, Duration::from_secs(3600));
+            assert_eq!(current.config.ticks, 12);
+            assert_eq!(
+                current.cache.lock().unwrap()["experiment"]["preset"],
+                "moderate-movement"
+            );
             assert_eq!(current.cache.lock().unwrap()["tick"], "0");
             assert_eq!(
                 current.cache.lock().unwrap()["experiment"]["seed"],
@@ -715,10 +795,11 @@ mod tests {
             // the 64-byte transport holds the rest across a real replacement.
             let headers = precondition(&api);
             let replacement = api.clone();
-            let reply =
-                tokio::task::spawn_blocking(move || replacement.replace_run(&headers, Some(42)))
-                    .await
-                    .unwrap();
+            let reply = tokio::task::spawn_blocking(move || {
+                replacement.replace_run(&headers, Some(42), None)
+            })
+            .await
+            .unwrap();
             assert_eq!(reply.status(), StatusCode::OK);
             assert!(!response_task.is_finished());
             let mut bytes = first.to_vec();
@@ -949,7 +1030,6 @@ mod slow_reader_test {
             let api = Api {
                 current: Arc::new(Mutex::new(run)),
                 experiment: Arc::new(Mutex::new(None)),
-                config,
                 port: 1234,
             };
             // Hyper serves the actual snapshot handler over a 64-byte transport. After

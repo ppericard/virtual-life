@@ -214,6 +214,269 @@ fn seeded_restart_replays_initial_and_fixed_tick_states_and_preserves_configurat
 }
 
 #[test]
+fn preset_restart_retains_current_bundles_for_seed_only_replay() {
+    use virtual_life::{engine::Weights, experiment::ExperimentConfig};
+    let server = Server::start(Config {
+        ticks: 3,
+        sample_every: 7,
+        tick_interval: Duration::from_secs(3600),
+        experiment: Some(ExperimentConfig {
+            width: 8,
+            height: 6,
+            occupancy: 500_000,
+            ..Default::default()
+        }),
+        ..Config::default()
+    });
+    let (run, old) = server.identified_snapshot();
+    let reply = server.restart(
+        &run,
+        r#"{"seed":"18446744073709551615","preset":"moderate-movement"}"#,
+    );
+    assert_eq!(parsed(&reply).0, 200, "{reply}");
+    let next = identity(&reply);
+    assert_ne!(next, run);
+    let initial = parsed(&reply).1;
+    assert_eq!(initial["tick"], "0");
+    assert_eq!(initial["status"], "paused");
+    assert_eq!(initial["experiment"]["preset"], "moderate-movement");
+    assert_eq!(
+        initial["experiment"]["maintenance"],
+        old["experiment"]["maintenance"]
+    );
+    let bundles = vec![
+        Weights([34, 4, 12, 30]),
+        Weights([26, 10, 12, 32]),
+        Weights([18, 16, 12, 34]),
+        Weights([10, 22, 12, 36]),
+    ];
+    let expected = ExperimentConfig {
+        width: 8,
+        height: 6,
+        occupancy: 500_000,
+        seed: u64::MAX,
+        bundles,
+        proportions: vec![1; 4],
+        ..Default::default()
+    };
+    let (mut world, mut random, _) = expected.initialize().unwrap();
+    for tick in 1..=3 {
+        let proposals = virtual_life::experiment::proposals(&world, &mut random);
+        world.step(&proposals).unwrap();
+        assert_eq!(server.control("step").0, 200);
+        server.until(
+            &tick.to_string(),
+            if tick == 3 { "completed" } else { "paused" },
+        );
+    }
+    let actual = server.snapshot();
+    for (cell, agent) in actual["cells"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .zip(world.cells())
+    {
+        match agent {
+            None => assert!(cell.is_null()),
+            Some(agent) => {
+                assert_eq!(cell["id"], agent.id.to_string());
+                assert_eq!(cell["weights"], json!(agent.weights.0));
+                assert_eq!(cell["integrity"], agent.integrity);
+            }
+        }
+    }
+    let replay = server.restart(&next, r#"{"seed":"18446744073709551615"}"#);
+    assert_eq!(parsed(&replay), (200, initial));
+}
+
+#[test]
+fn every_preset_matches_ordinary_initialization_and_fixed_ticks_with_custom_settings() {
+    use virtual_life::{
+        engine::{Maintenance, Weights},
+        experiment::{ExperimentConfig, proposals},
+        runner::{Snapshot, Status},
+    };
+    let settings = ExperimentConfig {
+        width: 9,
+        height: 7,
+        occupancy: 400_000,
+        seed: u64::MAX,
+        bundles: vec![Weights([1, 2, 3, 4])],
+        proportions: vec![7],
+        maintenance: Some(Maintenance {
+            maximum: 17,
+            upkeep: 2,
+            crowding_threshold: 3,
+            crowding_upkeep: 2,
+            move_wear: 3,
+            copy_wear: 4,
+            repair: 6,
+        }),
+    };
+    let server = Server::start(Config {
+        ticks: 8,
+        sample_every: 7,
+        tick_interval: Duration::from_secs(3600),
+        experiment: Some(settings.clone()),
+        ..Config::default()
+    });
+    let (mut run, custom) = server.identified_snapshot();
+    assert!(custom["experiment"]["preset"].is_null());
+    let expected = [
+        (
+            "original",
+            "Original",
+            [[2, 4, 1, 3], [2, 2, 2, 4], [4, 1, 1, 4], [1, 5, 2, 2]],
+        ),
+        (
+            "moderate-movement",
+            "Moderate movement",
+            [
+                [34, 4, 12, 30],
+                [26, 10, 12, 32],
+                [18, 16, 12, 34],
+                [10, 22, 12, 36],
+            ],
+        ),
+        (
+            "wide-movement-range",
+            "Wide movement range",
+            [
+                [34, 4, 12, 30],
+                [23, 12, 12, 33],
+                [12, 20, 12, 36],
+                [1, 28, 12, 39],
+            ],
+        ),
+        (
+            "lower-copying",
+            "Lower copying",
+            [
+                [38, 4, 8, 30],
+                [27, 12, 8, 33],
+                [16, 20, 8, 36],
+                [5, 28, 8, 39],
+            ],
+        ),
+    ];
+    let catalog = custom["experiment"]["presets"].as_array().unwrap();
+    assert_eq!(catalog.len(), 4);
+    for (index, (id, name, bundles)) in expected.into_iter().enumerate() {
+        assert_eq!(catalog[index]["id"], id);
+        assert_eq!(catalog[index]["name"], name);
+        assert_eq!(catalog[index]["bundles"], json!(bundles));
+        assert_eq!(catalog[index]["proportions"], json!([1, 1, 1, 1]));
+        let reply = server.restart(
+            &run,
+            &json!({"seed":u64::MAX.to_string(),"preset":id}).to_string(),
+        );
+        assert_eq!(parsed(&reply).0, 200, "{reply}");
+        assert_ne!(identity(&reply), run);
+        run = identity(&reply);
+        let initial = parsed(&reply).1;
+        assert_eq!(initial["experiment"]["preset"], id);
+        assert_eq!(
+            initial["experiment"]["groups"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|g| g["initial_count"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["7", "6", "6", "6"]
+        );
+        let reference = ExperimentConfig {
+            bundles: bundles.map(Weights).to_vec(),
+            proportions: vec![1; 4],
+            ..settings.clone()
+        };
+        let (mut world, mut random, info) = reference.initialize().unwrap();
+        for tick in 0..=8 {
+            if tick > 0 {
+                world.step(&proposals(&world, &mut random)).unwrap();
+                assert_eq!(server.control("step").0, 200);
+            }
+            let actual = server.until(
+                &tick.to_string(),
+                if tick == 8 { "completed" } else { "paused" },
+            );
+            let expected = web::snapshot_json(&Snapshot {
+                width: world.width(),
+                height: world.height(),
+                tick: world.tick(),
+                count: world.count(),
+                totals: world.totals(),
+                cells: world.cells().to_vec(),
+                status: if tick == 8 {
+                    Status::Completed
+                } else {
+                    Status::Paused
+                },
+                end_tick: 8,
+                experiment: Some(std::sync::Arc::new(info.clone())),
+                failures: world.failures().iter().copied().collect(),
+                discarded_failures: world.discarded_failures(),
+            });
+            assert_eq!(actual, expected, "{id} at tick {tick}");
+        }
+        let replay = server.restart(&run, &json!({"seed":u64::MAX.to_string()}).to_string());
+        assert_eq!(parsed(&replay), (200, initial));
+        run = identity(&replay);
+        // Pacing survives replacement: Resume is observed at tick zero before the one-hour deadline.
+        assert_eq!(server.control("resume").0, 200);
+        server.until("0", "running");
+        let random = server.restart(&run, &json!({"random":true,"preset":id}).to_string());
+        assert_eq!(parsed(&random).0, 200);
+        let random_state = parsed(&random).1;
+        assert_eq!(random_state["status"], "paused");
+        assert_eq!(random_state["experiment"]["preset"], id);
+        let replay = server.restart(
+            &identity(&random),
+            &json!({"seed":random_state["experiment"]["seed"]}).to_string(),
+        );
+        assert_eq!(parsed(&replay), (200, random_state));
+        run = identity(&replay);
+    }
+}
+
+#[test]
+fn presets_reject_unsupported_modes_and_require_exact_properties_for_the_current_label() {
+    use virtual_life::experiment::ExperimentConfig;
+    for experiment in [None, Some(ExperimentConfig::random())] {
+        let server = Server::start(Config {
+            ticks: 0,
+            experiment,
+            ..Config::default()
+        });
+        let (run, initial) = server.identified_snapshot();
+        assert!(initial["experiment"]["presets"].is_null());
+        assert!(initial["experiment"]["preset"].is_null());
+        assert_eq!(
+            parsed(&server.restart(&run, r#"{"seed":"0","preset":"original"}"#)).0,
+            409
+        );
+        assert_eq!(server.identified_snapshot(), (run, initial));
+    }
+    for (proportions, preset) in [(vec![1; 4], Some("original")), (vec![1, 2, 1, 1], None)] {
+        let server = Server::start(Config {
+            ticks: 0,
+            experiment: Some(ExperimentConfig {
+                proportions,
+                ..Default::default()
+            }),
+            ..Config::default()
+        });
+        let (run, initial) = server.identified_snapshot();
+        assert_eq!(initial["experiment"]["preset"], json!(preset));
+        let reply = server.restart(&run, r#"{"seed":"0","preset":"lower-copying"}"#);
+        assert_eq!(parsed(&reply).0, 200);
+        assert_ne!(identity(&reply), run);
+        assert_eq!(parsed(&reply).1["status"], "completed");
+        assert_eq!(parsed(&reply).1["tick"], "0");
+        assert_eq!(parsed(&reply).1["experiment"]["preset"], "lower-copying");
+    }
+}
+
+#[test]
 fn restart_rejects_invalid_seeds_preconditions_and_demo_without_replacing_a_run() {
     let server = Server::start(Config {
         experiment: Some(Default::default()),
@@ -243,7 +506,12 @@ fn restart_rejects_invalid_seeds_preconditions_and_demo_without_replacing_a_run(
         format!("{headers}Sec-Fetch-Site: cross-site\r\n"),
         format!("{headers}Host: foreign.example\r\n"),
     ] {
-        let reply = server.request("POST", "/api/restart", &forbidden, r#"{"seed":"1"}"#);
+        let reply = server.request(
+            "POST",
+            "/api/restart",
+            &forbidden,
+            r#"{"seed":"1","preset":"original"}"#,
+        );
         assert!(
             reply.starts_with("HTTP/1.1 403") || reply.starts_with("HTTP/1.1 400"),
             "{reply}"
@@ -267,6 +535,27 @@ fn restart_rejects_invalid_seeds_preconditions_and_demo_without_replacing_a_run(
         r#"{"seed":"1","extra":0}"#,
         r#"{"seed":null}"#,
         r#"{"random":null}"#,
+        r#"{"preset":"original"}"#,
+        r#"{"seed":"1","preset":""}"#,
+        r#"{"seed":"1","preset":"unknown"}"#,
+        r#"{"seed":"1","preset":"Original"}"#,
+        r#"{"seed":"1","preset":null}"#,
+        r#"{"seed":"1","preset":0}"#,
+        r#"{"seed":"1","preset":true}"#,
+        r#"{"seed":"1","preset":[]}"#,
+        r#"{"seed":"1","preset":{}}"#,
+        r#"{"seed":"1","preset":"original","preset":"lower-copying"}"#,
+        r#"{"seed":"1","seed":"2","preset":"original"}"#,
+        r#"{"random":true,"random":true,"preset":"original"}"#,
+        r#"{"seed":null,"preset":"original"}"#,
+        r#"{"random":null,"preset":"original"}"#,
+        r#"{"seed":"1","random":true,"preset":"original"}"#,
+        r#"{"seed":"1","random":null,"preset":"original"}"#,
+        r#"{"random":false,"preset":"original"}"#,
+        r#"{"seed":"1","preset":"original","bundles":[]}"#,
+        r#"{"seed":"1","preset":"original","extra":0}"#,
+        r#"["1",null,"original"]"#,
+        r#"["1"]"#,
     ] {
         assert_eq!(parsed(&server.restart(&run, body)).0, 400, "{body}");
     }
@@ -283,7 +572,7 @@ fn restart_rejects_invalid_seeds_preconditions_and_demo_without_replacing_a_run(
                     "Origin: http://{}\r\nContent-Type: application/json\r\n{precondition}",
                     server.address
                 ),
-                r#"{"seed":"1"}"#
+                r#"{"seed":"1","preset":"original"}"#
             ))
             .0,
             409
@@ -305,6 +594,10 @@ fn old_preconditions_are_checked_after_a_delayed_request_body() {
     for (path, body) in [
         ("/api/control", r#"{"command":"step"}"#),
         ("/api/restart", r#"{"seed":"2"}"#),
+        (
+            "/api/restart",
+            r#"{"seed":"2","preset":"wide-movement-range"}"#,
+        ),
     ] {
         let (run, _) = server.identified_snapshot();
         let mut delayed = TcpStream::connect_timeout(&server.address, GUARD).unwrap();
@@ -313,7 +606,7 @@ fn old_preconditions_are_checked_after_a_delayed_request_body() {
         // Withhold the final body byte. This request cannot mutate before the
         // explicitly acknowledged replacement, regardless of thread scheduling.
         write!(delayed, "POST {path} HTTP/1.1\r\nHost: {}\r\nOrigin: http://{}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nX-VirtualLife-Run: {run}\r\n\r\n{}", server.address, server.address, body.len(), &body[..body.len()-1]).unwrap();
-        let reply = server.restart(&run, r#"{"seed":"42"}"#);
+        let reply = server.restart(&run, r#"{"seed":"42","preset":"lower-copying"}"#);
         assert_eq!(parsed(&reply).0, 200);
         let next = identity(&reply);
         let initial = parsed(&reply).1;
