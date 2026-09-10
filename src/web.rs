@@ -106,12 +106,64 @@ struct CommandInput {
     command: String,
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum RestartInput {
+    Seed(String),
+    Random(bool),
+}
+
+fn restart_seed(bytes: &[u8]) -> Result<Option<u64>, &'static str> {
+    let input: RestartInput = serde_json::from_slice(bytes)
+        .map_err(|_| "use exactly one decimal seed string or random: true")?;
+    match input {
+        RestartInput::Seed(seed)
+            if !seed.is_empty() && seed.bytes().all(|b| b.is_ascii_digit()) =>
+        {
+            seed.parse()
+                .map(Some)
+                .map_err(|_| "seed must be between 0 and 18446744073709551615")
+        }
+        RestartInput::Random(true) => Ok(None),
+        _ => Err("use a decimal seed string from 0 to 18446744073709551615, or random: true"),
+    }
+}
+
 #[derive(Clone)]
-struct Api {
+struct RunView {
     cache: Cache,
     controls: Controls,
-    port: u16,
     run_id: HeaderValue,
+}
+
+struct Experiment {
+    worker: Worker,
+    collector: thread::JoinHandle<()>,
+}
+
+impl Experiment {
+    fn stop(self) -> Result<(), String> {
+        let stopped = self.worker.stop();
+        self.collector
+            .join()
+            .map_err(|_| "snapshot collector panicked")?;
+        stopped.map(|_| ())
+    }
+}
+
+#[derive(Clone)]
+struct Api {
+    current: Arc<Mutex<RunView>>,
+    // Only replacement/shutdown owns these handles. Snapshot reads and control
+    // enqueueing use the short current lock, never the initialization/join lock.
+    experiment: Arc<Mutex<Option<Experiment>>>,
+    config: Config,
+    port: u16,
+}
+
+fn identified(mut response: Response<Body>, run_id: &HeaderValue) -> Response<Body> {
+    response.headers_mut().insert(RUN_HEADER, run_id.clone());
+    response
 }
 
 fn response(status: StatusCode, content_type: &str, body: impl Into<Bytes>) -> Response<Body> {
@@ -169,7 +221,8 @@ impl Api {
                 "Host or Origin is not allowed",
             ));
         }
-        let mut reply = match (request.method().as_str(), request.uri().path()) {
+        let run = self.current.lock().expect("current run lock").clone();
+        let reply = match (request.method().as_str(), request.uri().path()) {
             ("GET", "/") => response(
                 StatusCode::OK,
                 "text/html; charset=utf-8",
@@ -190,77 +243,77 @@ impl Api {
             }
             ("GET", "/api/snapshot") => {
                 // Copy under the short cache lock; serialization and network I/O happen after release.
-                let snapshot = self.cache.lock().expect("cache lock").clone();
+                let snapshot = run.cache.lock().expect("cache lock").clone();
                 json_response(StatusCode::OK, snapshot)
             }
-            ("POST", "/api/control") => self.control(request).await,
+            ("POST", "/api/control") => return Ok(self.control(request).await),
+            ("POST", "/api/restart") => return Ok(self.restart(request).await),
             _ => error(StatusCode::NOT_FOUND, "unknown route or method"),
         };
-        reply.headers_mut().insert(RUN_HEADER, self.run_id.clone());
-        Ok(reply)
+        Ok(identified(reply, &run.run_id))
     }
 
     async fn control(&self, request: Request<Incoming>) -> Response<Body> {
-        // Browser commands name the run they were sent for. Local API clients
-        // may omit this precondition for compatibility with existing scripts.
-        if let Some(run_id) = request.headers().get(RUN_HEADER)
-            && (run_id.as_bytes() != self.run_id.as_bytes()
-                || request.headers().get_all(RUN_HEADER).iter().count() != 1)
-        {
-            return error(
-                StatusCode::CONFLICT,
-                "experiment changed; read the new snapshot",
-            );
-        }
-        if request
-            .headers()
-            .get("content-type")
-            .and_then(|v| v.to_str().ok())
-            != Some("application/json")
-        {
-            return error(StatusCode::UNSUPPORTED_MEDIA_TYPE, "use application/json");
-        }
-        let bytes = match Limited::new(request.into_body(), BODY_LIMIT)
-            .collect()
-            .await
-        {
-            Ok(body) => body.to_bytes(),
-            Err(_) => {
-                return error(
-                    StatusCode::PAYLOAD_TOO_LARGE,
-                    "invalid or oversized request body",
+        let headers = request.headers().clone();
+        let bytes = match request_body(request).await {
+            Ok(bytes) => bytes,
+            Err(reply) => return self.current_response(reply),
+        };
+        let (run_id, receiver) = {
+            let run = self.current.lock().expect("current run lock");
+            // Browser commands name the run they were sent for. Local API clients
+            // may omit this precondition for compatibility with existing scripts.
+            if let Some(run_id) = headers.get(RUN_HEADER)
+                && (run_id != run.run_id || headers.get_all(RUN_HEADER).iter().count() != 1)
+            {
+                return identified(
+                    error(
+                        StatusCode::CONFLICT,
+                        "experiment changed; read the new snapshot",
+                    ),
+                    &run.run_id,
                 );
             }
-        };
-        let input: CommandInput = match serde_json::from_slice(&bytes) {
-            Ok(value) => value,
-            Err(_) => return error(StatusCode::BAD_REQUEST, "invalid JSON"),
-        };
-        let command = match input.command.as_str() {
-            "pause" => Command::Pause,
-            "resume" => Command::Resume,
-            "step" => Command::Step,
-            _ => {
-                return error(
-                    StatusCode::BAD_REQUEST,
-                    "command must be pause, resume, or step; no other fields",
-                );
-            }
-        };
-        let receiver = match self.controls.request(command) {
-            Ok(receiver) => receiver,
-            Err(message) => {
-                let status = if message == "control queue is full" {
-                    StatusCode::SERVICE_UNAVAILABLE
-                } else {
-                    StatusCode::CONFLICT
-                };
-                return error(status, &message);
-            }
+            let input: CommandInput = match serde_json::from_slice(&bytes) {
+                Ok(value) => value,
+                Err(_) => {
+                    return identified(error(StatusCode::BAD_REQUEST, "invalid JSON"), &run.run_id);
+                }
+            };
+            let command = match input.command.as_str() {
+                "pause" => Command::Pause,
+                "resume" => Command::Resume,
+                "step" => Command::Step,
+                _ => {
+                    return identified(
+                        error(
+                            StatusCode::BAD_REQUEST,
+                            "command must be pause, resume, or step; no other fields",
+                        ),
+                        &run.run_id,
+                    );
+                }
+            };
+            let receiver = match run.controls.request(command) {
+                Ok(receiver) => receiver,
+                Err(message) => {
+                    let status = if message == "control queue is full" {
+                        StatusCode::SERVICE_UNAVAILABLE
+                    } else {
+                        StatusCode::CONFLICT
+                    };
+                    return identified(error(status, &message), &run.run_id);
+                }
+            };
+            (run.run_id.clone(), receiver)
         };
         // HTTP tasks can wait for a receipt; the simulation never waits for a reader.
         // There are at most MAX_CONNECTIONS tasks and one receipt per request.
-        match tokio::task::spawn_blocking(move || receiver.recv_timeout(CONTROL_TIMEOUT)).await {
+        let reply = match tokio::task::spawn_blocking(move || {
+            receiver.recv_timeout(CONTROL_TIMEOUT)
+        })
+        .await
+        {
             Ok(Ok(receipt)) => json_response(
                 if receipt.applied {
                     StatusCode::OK
@@ -280,14 +333,129 @@ impl Api {
                 StatusCode::GATEWAY_TIMEOUT,
                 "control outcome unknown; inspect the current tick before another command; do not retry automatically",
             ),
+        };
+        identified(reply, &run_id)
+    }
+
+    fn current_response(&self, reply: Response<Body>) -> Response<Body> {
+        identified(
+            reply,
+            &self.current.lock().expect("current run lock").run_id,
+        )
+    }
+
+    async fn restart(&self, request: Request<Incoming>) -> Response<Body> {
+        let headers = request.headers().clone();
+        let bytes = match request_body(request).await {
+            Ok(bytes) => bytes,
+            Err(reply) => return self.current_response(reply),
+        };
+        let seed = match restart_seed(&bytes) {
+            Ok(seed) => seed,
+            Err(message) => return self.current_response(error(StatusCode::BAD_REQUEST, message)),
+        };
+        let api = self.clone();
+        // Initialization and joins must outlive a lost HTTP reply. Only one
+        // replacement can be in progress; no detached backlog of workers grows.
+        match tokio::task::spawn_blocking(move || api.replace_run(&headers, seed)).await {
+            Ok(reply) => reply,
+            Err(_) => self.current_response(error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "restart outcome unknown; read the current snapshot; do not retry automatically",
+            )),
         }
+    }
+
+    fn replace_run(&self, headers: &hyper::HeaderMap, seed: Option<u64>) -> Response<Body> {
+        let Ok(mut owned) = self.experiment.try_lock() else {
+            return self.current_response(error(
+                StatusCode::CONFLICT,
+                "restart already in progress; read the current snapshot",
+            ));
+        };
+        {
+            let run = self.current.lock().expect("current run lock");
+            if headers.get_all(RUN_HEADER).iter().count() != 1
+                || headers.get(RUN_HEADER) != Some(&run.run_id)
+            {
+                return identified(
+                    error(
+                        StatusCode::CONFLICT,
+                        "experiment changed; read the new snapshot",
+                    ),
+                    &run.run_id,
+                );
+            }
+        }
+        if owned.is_none() {
+            return self
+                .current_response(error(StatusCode::SERVICE_UNAVAILABLE, "server is stopping"));
+        }
+        let mut config = self.config.clone();
+        let Some(settings) = &mut config.experiment else {
+            return self.current_response(error(
+                StatusCode::CONFLICT,
+                "seeded restart is available only in autonomous mode",
+            ));
+        };
+        settings.seed = match seed {
+            Some(seed) => seed,
+            None => {
+                let mut bytes = [0; 8];
+                if getrandom::fill(&mut bytes).is_err() {
+                    return self.current_response(error(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "cannot generate a seed; current run retained",
+                    ));
+                }
+                u64::from_ne_bytes(bytes)
+            }
+        };
+        config.start_paused = true;
+        // Prepare fully before touching the old run. A failed initialization
+        // drops/stops its worker and leaves the current run usable.
+        let (worker, next, collector) = match start_experiment(config) {
+            Ok(started) => started,
+            Err(message) => {
+                return self.current_response(error(StatusCode::INTERNAL_SERVER_ERROR, &message));
+            }
+        };
+        // Both threads are joined even if the old simulation itself failed.
+        let _ = owned.take().expect("active experiment").stop();
+        let snapshot = next.cache.lock().expect("cache lock").clone();
+        let reply = identified(json_response(StatusCode::OK, snapshot), &next.run_id);
+        *owned = Some(Experiment { worker, collector });
+        *self.current.lock().expect("current run lock") = next;
+        reply
     }
 }
 
-fn start_experiment(
-    config: Config,
-    port: u16,
-) -> Result<(Worker, Api, thread::JoinHandle<()>), String> {
+async fn request_body(request: Request<Incoming>) -> Result<Bytes, Response<Body>> {
+    if request.headers().get_all("content-type").iter().count() != 1
+        || request
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            != Some("application/json")
+    {
+        return Err(error(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "use application/json",
+        ));
+    }
+    Limited::new(request.into_body(), BODY_LIMIT)
+        .collect()
+        .await
+        .map(|body| body.to_bytes())
+        .map_err(|_| {
+            error(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "invalid or oversized request body",
+            )
+        })
+}
+
+fn start_experiment(config: Config) -> Result<(Worker, RunView, thread::JoinHandle<()>), String> {
     // Identity belongs to this adapter instance, not to model state or tick time.
     // OS randomness avoids clock/PID reuse; no simulation randomness is added.
     let mut identity = [0_u8; 16];
@@ -317,16 +485,15 @@ fn start_experiment(
             }
         })
         .map_err(|e| e.to_string())?;
-    let api = Api {
+    let api = RunView {
         cache,
         controls: worker.controls(),
-        port,
         run_id,
     };
     Ok((worker, api, collector))
 }
 
-/// Serve one experiment until explicit shutdown. Completion keeps its final cache.
+/// Serve successive experiments until shutdown. Completion keeps its final cache.
 /// The caller binds loopback (checked here too); port 0 is useful for isolated tests.
 pub async fn serve(
     listener: TcpListener,
@@ -342,7 +509,13 @@ pub async fn serve(
         return Err("the viewer must bind to loopback".into());
     }
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
-    let (worker, api, collector) = start_experiment(config, port)?;
+    let (worker, run, collector) = start_experiment(config.clone())?;
+    let api = Api {
+        current: Arc::new(Mutex::new(run)),
+        experiment: Arc::new(Mutex::new(Some(Experiment { worker, collector }))),
+        config,
+        port,
+    };
     let mut connections = JoinSet::new();
     tokio::pin!(shutdown);
     let result = loop {
@@ -370,11 +543,17 @@ pub async fn serve(
     };
     // Allow already-started responses to finish, bounded by their connection deadline.
     while connections.join_next().await.is_some() {}
-    let stopped = worker.stop();
-    collector
-        .join()
-        .map_err(|_| "snapshot collector panicked")?;
-    stopped?;
+    // Also wait for a replacement whose HTTP response hit its deadline.
+    tokio::task::spawn_blocking(move || {
+        api.experiment
+            .lock()
+            .expect("experiment lock")
+            .take()
+            .expect("active experiment")
+            .stop()
+    })
+    .await
+    .map_err(|_| "experiment shutdown panicked")??;
     result
 }
 
@@ -382,6 +561,154 @@ pub async fn serve(
 mod tests {
     use super::*;
     use crate::engine::{Agent, Events};
+
+    fn autonomous_api() -> Api {
+        let config = Config {
+            ticks: 12,
+            sample_every: 7,
+            tick_interval: Duration::from_secs(3600),
+            experiment: Some(crate::experiment::ExperimentConfig {
+                width: 8,
+                height: 6,
+                ..Default::default()
+            }),
+            ..Config::default()
+        };
+        let (worker, run, collector) = start_experiment(config.clone()).unwrap();
+        Api {
+            current: Arc::new(Mutex::new(run)),
+            experiment: Arc::new(Mutex::new(Some(Experiment { worker, collector }))),
+            config,
+            port: 1234,
+        }
+    }
+
+    fn precondition(api: &Api) -> hyper::HeaderMap {
+        let mut headers = hyper::HeaderMap::new();
+        headers.insert(RUN_HEADER, api.current.lock().unwrap().run_id.clone());
+        headers
+    }
+
+    #[test]
+    fn failed_restart_initialization_retains_an_usable_run_and_replacements_join_old_workers() {
+        let mut api = autonomous_api();
+        let initial = api.current.lock().unwrap().clone();
+        let headers = precondition(&api);
+        // Exercise the real initializer's rejection without touching the valid worker.
+        api.config.sample_every = 0;
+        assert_eq!(
+            api.replace_run(&headers, Some(42)).status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert_eq!(api.current.lock().unwrap().run_id, initial.run_id);
+        assert!(
+            initial
+                .controls
+                .request(Command::Step)
+                .unwrap()
+                .recv_timeout(REQUEST_TIMEOUT)
+                .unwrap()
+                .applied
+        );
+        api.config.sample_every = 7;
+        for seed in 0..24 {
+            let old = api.current.lock().unwrap().clone();
+            let headers = precondition(&api);
+            let reply = api.replace_run(&headers, Some(seed));
+            assert_eq!(reply.status(), StatusCode::OK);
+            assert_ne!(reply.headers()[RUN_HEADER], old.run_id);
+            // Disconnected command channels prove replacement has joined, rather
+            // than leaving an old paused/completed worker waiting indefinitely.
+            assert!(old.controls.request(Command::Step).is_err());
+            let current = api.current.lock().unwrap().clone();
+            assert_eq!(current.cache.lock().unwrap()["tick"], "0");
+            assert_eq!(
+                current.cache.lock().unwrap()["experiment"]["seed"],
+                seed.to_string()
+            );
+        }
+        api.experiment
+            .lock()
+            .unwrap()
+            .take()
+            .unwrap()
+            .stop()
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn retained_http_snapshots_and_control_receipts_keep_their_old_identity_after_restart() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        for control in [false, true] {
+            let api = autonomous_api();
+            let old = api.current.lock().unwrap().run_id.clone();
+            let (mut reader, writer) = tokio::io::duplex(64);
+            let connection_api = api.clone();
+            let response_task = tokio::spawn(async move {
+                http1::Builder::new()
+                    .keep_alive(false)
+                    .serve_connection(
+                        TokioIo::new(writer),
+                        service_fn(move |request| connection_api.clone().handle(request)),
+                    )
+                    .await
+                    .unwrap();
+            });
+            let request = if control {
+                let body = r#"{"command":"step"}"#;
+                format!(
+                    "POST /api/control HTTP/1.1\r\nHost: 127.0.0.1:1234\r\nOrigin: http://127.0.0.1:1234\r\nContent-Type: application/json\r\nContent-Length: {}\r\nX-VirtualLife-Run: {}\r\n\r\n{body}",
+                    body.len(),
+                    old.to_str().unwrap()
+                )
+            } else {
+                "GET /api/snapshot HTTP/1.1\r\nHost: 127.0.0.1:1234\r\n\r\n".to_owned()
+            };
+            reader.write_all(request.as_bytes()).await.unwrap();
+            let mut first = [0];
+            timeout(REQUEST_TIMEOUT, reader.read_exact(&mut first))
+                .await
+                .unwrap()
+                .unwrap();
+            // One response byte proves the old snapshot/receipt was produced;
+            // the 64-byte transport holds the rest across a real replacement.
+            let headers = precondition(&api);
+            let replacement = api.clone();
+            let reply =
+                tokio::task::spawn_blocking(move || replacement.replace_run(&headers, Some(42)))
+                    .await
+                    .unwrap();
+            assert_eq!(reply.status(), StatusCode::OK);
+            assert!(!response_task.is_finished());
+            let mut bytes = first.to_vec();
+            timeout(REQUEST_TIMEOUT, reader.read_to_end(&mut bytes))
+                .await
+                .unwrap()
+                .unwrap();
+            response_task.await.unwrap();
+            let text = String::from_utf8(bytes).unwrap();
+            let (headers, body) = text.split_once("\r\n\r\n").unwrap();
+            assert!(headers.contains(&format!("{RUN_HEADER}: {}", old.to_str().unwrap())));
+            let value: Value = serde_json::from_str(body).unwrap();
+            assert_eq!(value["tick"], if control { "1" } else { "0" });
+            if control {
+                assert_eq!(value["applied"], true);
+            } else {
+                assert_eq!(value["experiment"]["seed"], "1");
+            }
+            let run = api.current.lock().unwrap().clone();
+            assert_ne!(run.run_id, old);
+            assert_eq!(run.cache.lock().unwrap()["tick"], "0");
+            assert_eq!(run.cache.lock().unwrap()["experiment"]["seed"], "42");
+            api.experiment
+                .lock()
+                .unwrap()
+                .take()
+                .unwrap()
+                .stop()
+                .unwrap();
+        }
+    }
 
     #[test]
     fn serialization_keeps_u64_and_signed_extremes_exact() {
@@ -473,14 +800,11 @@ mod tests {
         let (done, finished) = mpsc::channel();
         thread::spawn(move || {
             for retain_response in [false, true] {
-                let (worker, api, collector) = start_experiment(
-                    Config {
-                        ticks: 100,
-                        tick_interval: Duration::ZERO,
-                        ..Config::default()
-                    },
-                    0,
-                )
+                let (worker, api, collector) = start_experiment(Config {
+                    ticks: 100,
+                    tick_interval: Duration::ZERO,
+                    ..Config::default()
+                })
                 .unwrap();
                 let old_response = retain_response.then(|| api.cache.lock().unwrap().clone());
                 api.controls
@@ -554,9 +878,15 @@ mod slow_reader_test {
             .unwrap()
             .join()
             .unwrap();
-            let (worker, api, collector) = start_experiment(config, 1234).unwrap();
-            let controls = api.controls.clone();
-            let cache = api.cache.clone();
+            let (worker, run, collector) = start_experiment(config.clone()).unwrap();
+            let controls = run.controls.clone();
+            let cache = run.cache.clone();
+            let api = Api {
+                current: Arc::new(Mutex::new(run)),
+                experiment: Arc::new(Mutex::new(None)),
+                config,
+                port: 1234,
+            };
             // Hyper serves the actual snapshot handler over a 64-byte transport. After
             // one byte is read, the response cannot finish until the reader continues.
             // This gives deterministic backpressure without timing sleeps or huge data.

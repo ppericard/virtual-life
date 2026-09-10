@@ -44,19 +44,7 @@ impl Server {
         }
     }
     fn request(&self, method: &str, path: &str, headers: &str, body: &str) -> String {
-        let mut stream = TcpStream::connect_timeout(&self.address, GUARD).unwrap();
-        stream.set_read_timeout(Some(GUARD)).unwrap();
-        stream.set_write_timeout(Some(GUARD)).unwrap();
-        write!(
-            stream,
-            "{method} {path} HTTP/1.1\r\nHost: {}\r\nContent-Length: {}\r\n{headers}\r\n{body}",
-            self.address,
-            body.len()
-        )
-        .unwrap();
-        let mut response = String::new();
-        stream.read_to_string(&mut response).unwrap();
-        response
+        request(self.address, method, path, headers, body)
     }
     fn control(&self, command: &str) -> (u16, Value) {
         parsed(&self.request(
@@ -89,6 +77,22 @@ impl Server {
         }
     }
 }
+
+fn request(address: SocketAddr, method: &str, path: &str, headers: &str, body: &str) -> String {
+    let mut stream = TcpStream::connect_timeout(&address, GUARD).unwrap();
+    stream.set_read_timeout(Some(GUARD)).unwrap();
+    stream.set_write_timeout(Some(GUARD)).unwrap();
+    write!(
+        stream,
+        "{method} {path} HTTP/1.1\r\nHost: {}\r\nContent-Length: {}\r\n{headers}\r\n{body}",
+        address,
+        body.len()
+    )
+    .unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+    response
+}
 impl Drop for Server {
     fn drop(&mut self) {
         if let Some(shutdown) = self.shutdown.take() {
@@ -105,6 +109,270 @@ fn parsed(response: &str) -> (u16, Value) {
     let status = response.split_whitespace().nth(1).unwrap().parse().unwrap();
     let body = response.split_once("\r\n\r\n").unwrap().1;
     (status, serde_json::from_str(body).unwrap())
+}
+
+fn identity(response: &str) -> String {
+    response
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.eq_ignore_ascii_case("x-virtuallife-run")
+                .then(|| value.trim().to_owned())
+        })
+        .expect("response run identity")
+}
+
+impl Server {
+    fn identified_snapshot(&self) -> (String, Value) {
+        let response = self.request("GET", "/api/snapshot", "", "");
+        (identity(&response), parsed(&response).1)
+    }
+
+    fn restart(&self, run: &str, body: &str) -> String {
+        self.request("POST", "/api/restart", &format!(
+            "Origin: http://{}\r\nContent-Type: application/json\r\nX-VirtualLife-Run: {run}\r\n", self.address
+        ), body)
+    }
+}
+
+#[test]
+fn seeded_restart_replays_initial_and_fixed_tick_states_and_preserves_configuration() {
+    use virtual_life::{
+        engine::{Maintenance, Weights},
+        experiment::ExperimentConfig,
+    };
+    for maintenance in [
+        None,
+        Some(Maintenance {
+            maximum: 17,
+            upkeep: 2,
+            move_wear: 3,
+            copy_wear: 4,
+            repair: 6,
+        }),
+    ] {
+        let server = Server::start(Config {
+            ticks: 12,
+            sample_every: 7,
+            tick_interval: Duration::from_secs(3600),
+            experiment: Some(ExperimentConfig {
+                width: 8,
+                height: 6,
+                occupancy: 500_000,
+                seed: u64::MAX,
+                bundles: vec![Weights([1, 2, 3, 4]), Weights([4, 3, 2, 1])],
+                proportions: vec![3, 2],
+                maintenance,
+            }),
+            ..Config::default()
+        });
+        let (mut run, initial) = server.identified_snapshot();
+        let mut expected_final = None;
+        for _ in 0..2 {
+            for tick in 1..=12 {
+                assert_eq!(server.control("step").0, 200);
+                server.until(
+                    &tick.to_string(),
+                    if tick == 12 { "completed" } else { "paused" },
+                );
+            }
+            let final_state = server.snapshot();
+            if let Some(expected) = &expected_final {
+                assert_eq!(&final_state, expected);
+            }
+            expected_final = Some(final_state);
+            let reply = server.restart(&run, r#"{"seed":"18446744073709551615"}"#);
+            assert_eq!(parsed(&reply).0, 200, "{reply}");
+            let next = identity(&reply);
+            assert_ne!(next, run);
+            assert_eq!(parsed(&reply).1, initial);
+            assert_eq!(
+                server.identified_snapshot(),
+                (next.clone(), initial.clone())
+            );
+            run = next;
+        }
+        // Running at tick zero is a deterministic barrier; pacing is retained.
+        assert_eq!(server.control("resume").0, 200);
+        server.until("0", "running");
+        let reply = server.restart(&run, r#"{"seed":"0"}"#);
+        assert_eq!(parsed(&reply).0, 200);
+        let (zero_run, zero) = server.identified_snapshot();
+        assert_eq!(zero["status"], "paused");
+        assert_eq!(zero["experiment"]["seed"], "0");
+        let random = server.restart(&zero_run, r#"{"random":true}"#);
+        assert_eq!(parsed(&random).0, 200);
+        let random_state = parsed(&random).1;
+        let replay = server.restart(
+            &identity(&random),
+            &json!({"seed":random_state["experiment"]["seed"]}).to_string(),
+        );
+        assert_eq!(parsed(&replay), (200, random_state));
+    }
+}
+
+#[test]
+fn restart_rejects_invalid_seeds_preconditions_and_demo_without_replacing_a_run() {
+    let server = Server::start(Config {
+        experiment: Some(Default::default()),
+        ..Config::default()
+    });
+    let (run, initial) = server.identified_snapshot();
+    let headers = format!(
+        "Origin: http://{}\r\nContent-Type: application/json\r\nX-VirtualLife-Run: {run}\r\n",
+        server.address
+    );
+    assert_eq!(parsed(&server.restart(&run, &"x".repeat(129))).0, 413);
+    assert_eq!(
+        parsed(&server.request(
+            "POST",
+            "/api/restart",
+            &headers.replace("application/json", "text/plain"),
+            r#"{"seed":"1"}"#
+        ))
+        .0,
+        415
+    );
+    for forbidden in [
+        headers.replace(
+            &format!("Origin: http://{}", server.address),
+            "Origin: https://foreign.example",
+        ),
+        format!("{headers}Sec-Fetch-Site: cross-site\r\n"),
+        format!("{headers}Host: foreign.example\r\n"),
+    ] {
+        let reply = server.request("POST", "/api/restart", &forbidden, r#"{"seed":"1"}"#);
+        assert!(
+            reply.starts_with("HTTP/1.1 403") || reply.starts_with("HTTP/1.1 400"),
+            "{reply}"
+        );
+    }
+    for body in [
+        "{}",
+        "{",
+        r#"{"seed":1}"#,
+        r#"{"seed":""}"#,
+        r#"{"seed":"-1"}"#,
+        r#"{"seed":"+1"}"#,
+        r#"{"seed":"1.0"}"#,
+        r#"{"seed":"1e2"}"#,
+        r#"{"seed":" 1"}"#,
+        r#"{"seed":"18446744073709551616"}"#,
+        r#"{"seed":"1","seed":"2"}"#,
+        r#"{"random":true,"random":true}"#,
+        r#"{"random":false}"#,
+        r#"{"random":true,"seed":"1"}"#,
+        r#"{"seed":"1","extra":0}"#,
+        r#"{"seed":null}"#,
+        r#"{"random":null}"#,
+    ] {
+        assert_eq!(parsed(&server.restart(&run, body)).0, 400, "{body}");
+    }
+    for precondition in [
+        String::new(),
+        "X-VirtualLife-Run: stale\r\n".to_owned(),
+        format!("X-VirtualLife-Run: {run}\r\nX-VirtualLife-Run: {run}\r\n"),
+    ] {
+        assert_eq!(
+            parsed(&server.request(
+                "POST",
+                "/api/restart",
+                &format!(
+                    "Origin: http://{}\r\nContent-Type: application/json\r\n{precondition}",
+                    server.address
+                ),
+                r#"{"seed":"1"}"#
+            ))
+            .0,
+            409
+        );
+    }
+    assert_eq!(server.identified_snapshot(), (run, initial));
+    let demo = Server::start(Config::default());
+    let (run, initial) = demo.identified_snapshot();
+    assert_eq!(parsed(&demo.restart(&run, r#"{"seed":"1"}"#)).0, 409);
+    assert_eq!(demo.identified_snapshot(), (run, initial));
+}
+
+#[test]
+fn old_preconditions_are_checked_after_a_delayed_request_body() {
+    let server = Server::start(Config {
+        experiment: Some(Default::default()),
+        ..Config::default()
+    });
+    for (path, body) in [
+        ("/api/control", r#"{"command":"step"}"#),
+        ("/api/restart", r#"{"seed":"2"}"#),
+    ] {
+        let (run, _) = server.identified_snapshot();
+        let mut delayed = TcpStream::connect_timeout(&server.address, GUARD).unwrap();
+        delayed.set_read_timeout(Some(GUARD)).unwrap();
+        delayed.set_write_timeout(Some(GUARD)).unwrap();
+        // Withhold the final body byte. This request cannot mutate before the
+        // explicitly acknowledged replacement, regardless of thread scheduling.
+        write!(delayed, "POST {path} HTTP/1.1\r\nHost: {}\r\nOrigin: http://{}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nX-VirtualLife-Run: {run}\r\n\r\n{}", server.address, server.address, body.len(), &body[..body.len()-1]).unwrap();
+        let reply = server.restart(&run, r#"{"seed":"42"}"#);
+        assert_eq!(parsed(&reply).0, 200);
+        let next = identity(&reply);
+        let initial = parsed(&reply).1;
+        delayed
+            .write_all(&body.as_bytes()[body.len() - 1..])
+            .unwrap();
+        let mut rejected = String::new();
+        delayed.read_to_string(&mut rejected).unwrap();
+        assert_eq!(parsed(&rejected).0, 409);
+        assert_eq!(identity(&rejected), next);
+        assert_eq!(server.identified_snapshot(), (next, initial));
+    }
+}
+
+#[test]
+fn zero_tick_restart_stays_completed_and_concurrent_old_run_restarts_cannot_both_apply() {
+    let server = Server::start(Config {
+        ticks: 0,
+        experiment: Some(Default::default()),
+        ..Config::default()
+    });
+    let (run, initial) = server.identified_snapshot();
+    let barrier = std::sync::Barrier::new(3);
+    let headers = format!(
+        "Origin: http://{}\r\nContent-Type: application/json\r\nX-VirtualLife-Run: {run}\r\n",
+        server.address
+    );
+    let address = server.address;
+    let replies = thread::scope(|scope| {
+        let a = scope.spawn(|| {
+            barrier.wait();
+            request(address, "POST", "/api/restart", &headers, r#"{"seed":"0"}"#)
+        });
+        let b = scope.spawn(|| {
+            barrier.wait();
+            request(address, "POST", "/api/restart", &headers, r#"{"seed":"1"}"#)
+        });
+        barrier.wait();
+        [a.join().unwrap(), b.join().unwrap()]
+    });
+    let mut statuses = replies.iter().map(|r| parsed(r).0).collect::<Vec<_>>();
+    statuses.sort();
+    assert_eq!(statuses, [200, 409]);
+    let (next, current) = server.identified_snapshot();
+    assert_ne!(run, next);
+    assert_eq!(current["status"], "completed");
+    assert_eq!(current["tick"], "0");
+    assert_eq!(initial["end_tick"], current["end_tick"]);
+    assert_eq!(parsed(&server.restart(&run, r#"{"seed":"2"}"#)).0, 409);
+    let old_command = server.request(
+        "POST",
+        "/api/control",
+        &format!(
+            "Origin: http://{}\r\nContent-Type: application/json\r\nX-VirtualLife-Run: {run}\r\n",
+            server.address
+        ),
+        r#"{"command":"step"}"#,
+    );
+    assert_eq!(parsed(&old_command).0, 409);
+    assert_eq!(identity(&old_command), next);
+    assert_eq!(server.identified_snapshot(), (next, current));
 }
 
 #[test]
