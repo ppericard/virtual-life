@@ -10,10 +10,12 @@ function controls() {
   byId('step').disabled = !ready || sample.status !== 'paused';
   byId('pause').disabled = !ready || sample.status !== 'running';
   byId('resume').disabled = !ready || sample.status !== 'paused';
+  for (const id of ['seed', 'restart-seed', 'restart-random']) byId(id).disabled = !ready || !sample.experiment;
 }
 function render() {
   renderReadouts(sample, selected);
   renderExperiment(sample);
+  byId('restart-controls').hidden = !sample.experiment;
   const selector = byId('agent');
   selector.replaceChildren(new Option('Choose an agent', ''));
   for (const agent of sample.cells.filter(Boolean)) selector.add(new Option(`ID ${agent.id} · ${sample.experiment ? `Group ${groupLabel(agent.group)}` : `Value ${agent.value}`}`, agent.id));
@@ -24,6 +26,25 @@ function render() {
   drawPlot(byId('plot'), history);
   byId('samples').textContent = sampleDescription(history);
   controls();
+}
+
+function receiveRun(next, nextRun) {
+  if (nextRun !== runId) {
+    if (runId !== null) {
+      history.length = 0;
+      selected = ''; receipt = null; busy = false;
+      commandVersion++; // Retire every old snapshot, command and restart callback.
+      byId('control-message').textContent = '';
+      byId('run-message').textContent = 'New experiment connected. Previous page history and selection cleared. No commands retried.';
+    }
+    // Seed edits survive ordinary polling and same-run reconnection.
+    byId('seed').value = next.experiment?.seed ?? '1';
+    byId('seed').removeAttribute('aria-invalid');
+  }
+  runId = nextRun;
+  sample = next;
+  connected = true;
+  byId('connection').hidden = true;
 }
 function connectionError(message) {
   connected = false;
@@ -43,17 +64,7 @@ async function poll() {
     if (version !== commandVersion) return; // Ignore a read started before the last control.
     const nextRun = response.headers.get(runHeader);
     if (!nextRun) throw new Error('Missing experiment identity; reload after upgrading the server');
-    if (runId !== null && nextRun !== runId) {
-      history.length = 0;
-      selected = ''; receipt = null; busy = false;
-      commandVersion++; // Retire every outstanding callback from the previous run.
-      byId('control-message').textContent = '';
-      byId('run-message').textContent = 'New experiment connected. Previous page history and selection cleared. No commands retried.';
-    }
-    runId = nextRun;
-    sample = next;
-    connected = true;
-    byId('connection').hidden = true;
+    receiveRun(next, nextRun);
     // commandVersion excludes reads started before the receipt. Another control
     // can supersede its status at the same tick, so wait only for the applied tick.
     if (receipt && BigInt(sample.tick) >= BigInt(receipt.tick)) {
@@ -73,18 +84,40 @@ async function poll() {
   }
 }
 
-async function command(name) {
+async function command(name, restart = false) {
   if (busy || !connected || !runId) return;
+  let body = { command: name };
+  if (restart) {
+    if (!sample.experiment) return;
+    const seed = byId('seed').value;
+    if (name === 'seed' && (!/^[0-9]+$/.test(seed) || BigInt(seed) > 18446744073709551615n)) {
+      byId('seed').setAttribute('aria-invalid', 'true');
+      byId('control-message').textContent = 'Enter a whole seed from 0 to 18446744073709551615, using digits only.';
+      byId('seed').focus();
+      return;
+    }
+    byId('seed').removeAttribute('aria-invalid');
+    body = name === 'seed' ? { seed: BigInt(seed).toString() } : { random: true };
+  }
   const version = ++commandVersion;
   busy = true; controls();
-  byId('control-message').textContent = 'Request sent; waiting for the worker to apply it…';
+  byId('control-message').textContent = restart ? 'Restart sent; waiting for the new experiment…' : 'Request sent; waiting for the worker to apply it…';
   try {
-    const response = await fetch('/api/control', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', [runHeader]: runId }, body: JSON.stringify({ command: name }),
+    const response = await fetch(restart ? '/api/restart' : '/api/control', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', [runHeader]: runId }, body: JSON.stringify(body),
       signal: AbortSignal.timeout(4000),
     });
     const result = await response.json();
     if (version !== commandVersion) return; // A newer run/command owns the page now.
+    if (restart && response.ok) {
+      const nextRun = response.headers.get(runHeader);
+      if (!nextRun || nextRun === runId) throw new Error('Missing new experiment identity');
+      receiveRun(result, nextRun);
+      byId('control-message').textContent = `Restarted with seed ${sample.experiment.seed}. ${sample.status === 'completed' ? 'Completed' : 'Paused'} at tick 0.`;
+      recordSample(history, sample);
+      render();
+      return;
+    }
     if (response.headers.get(runHeader) !== runId) {
       busy = false;
       connectionError('Server changed; waiting for its current experiment. No command was retried.');
@@ -100,8 +133,8 @@ async function command(name) {
   } catch {
     if (version !== commandVersion) return;
     busy = false;
-    connectionError('Control outcome unknown. Check the current tick before another command. The request was not retried.');
-    byId('control-message').textContent = 'Outcome unknown; inspect the current tick before another command. No automatic retry.';
+    connectionError(restart ? 'Restart outcome unknown. Check the current experiment and seed before another command. The request was not retried.' : 'Control outcome unknown. Check the current tick before another command. The request was not retried.');
+    byId('control-message').textContent = restart ? 'Restart outcome unknown; inspect the current experiment and seed. No automatic retry.' : 'Outcome unknown; inspect the current tick before another command. No automatic retry.';
   } finally {
     if (version === commandVersion) {
       commandVersion++;
@@ -110,6 +143,7 @@ async function command(name) {
   }
 }
 for (const name of ['pause', 'resume', 'step']) byId(name).addEventListener('click', () => command(name));
+for (const name of ['seed', 'random']) byId(`restart-${name}`).addEventListener('click', () => command(name, true));
 byId('agent').addEventListener('change', event => { selected = event.target.value; if (sample) render(); });
 byId('grid').addEventListener('click', event => {
   if (!sample) return;

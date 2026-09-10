@@ -13,6 +13,7 @@
     <section class="toolbar" aria-label="Experiment controls">
       <div class="tick">Tick <strong id="tick">—</strong><span> / <span id="end-tick">—</span></span></div>
       <div class="buttons"><button id="resume" disabled>Resume</button><button id="pause" disabled>Pause</button><button id="step" disabled>Single step</button></div>
+      <div id="restart-controls" hidden><label for="seed">Seed</label><input id="seed" type="text" inputmode="numeric" value="1" aria-describedby="control-message" disabled><div class="buttons"><button id="restart-seed" disabled>Restart with seed</button><button id="restart-random" disabled>Restart with random seed</button></div></div>
       <p id="control-message" aria-live="polite">Starts paused. Advance a tick to inspect individual decisions.</p>
       <p id="run-message" aria-live="polite"></p>
     </section>

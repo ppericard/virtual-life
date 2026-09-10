@@ -12,9 +12,10 @@ p { line-height: 1.5; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: center; padding: 22px 0; margin-top: 18px; border-top: 1px solid #ccd7d0; border-bottom: 1px solid #ccd7d0; }
 .tick { white-space: nowrap; font-size: 16px; }.tick strong { font-size: 25px; font-variant-numeric: tabular-nums; }.tick span { color: #677a74; }
 .buttons { display: flex; gap: 8px; }
-button, select { font: inherit; font-size: 14px; border: 1px solid #92a59d; border-radius: 5px; padding: 10px 14px; background: white; color: #203333; }
+button, select, input { font: inherit; font-size: 14px; border: 1px solid #92a59d; border-radius: 5px; padding: 10px 14px; background: white; color: #203333; }
 button { cursor: pointer; }button:hover:not(:disabled) { background: #e0eae4; }#resume { background: #254f45; color: white; }#resume:hover:not(:disabled) { background: #326758; }
-button:disabled { opacity: .45; cursor: default; }button:focus-visible, select:focus-visible { outline: 3px solid #bd8139; outline-offset: 3px; }
+button:disabled { opacity: .45; cursor: default; }button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid #bd8139; outline-offset: 3px; }
+#restart-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex-basis: 100%; } #restart-controls .buttons { flex-wrap: wrap; } #seed { width: 24ch; max-width: 100%; font-variant-numeric: tabular-nums; } #seed[aria-invalid="true"] { border-color: #a44324; }
 #control-message { font-size: 12px; margin: 0; flex: 1; min-width: 210px; color: #536662; }
 #connection { background: #fff0dc; color: #6a3812; padding: 12px; border: 1px solid #ce9e69; border-radius: 5px; }
 .workspace { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 42px; padding: 30px 0; }
