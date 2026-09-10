@@ -110,7 +110,9 @@ export function drawGrid(canvas, sample, selected) {
   const box = canvas.getBoundingClientRect();
   const showLetters = Math.min(w * box.width / 600, h * box.height / 600) >= 14;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '16px system-ui'; ctx.fillStyle = '#536662';
-  for (let x = 0; x < sample.width; x += Math.max(1, Math.ceil(24 / w))) ctx.fillText(String(x), 40 + (x + .5) * w, 22);
+  // Wider coordinates need more space as their digit count grows.
+  const xSpacing = Math.max(24, ctx.measureText(String(sample.width - 1)).width + 8);
+  for (let x = 0; x < sample.width; x += Math.max(1, Math.ceil(xSpacing / w))) ctx.fillText(String(x), 40 + (x + .5) * w, 22);
   for (let y = 0; y < sample.height; y += Math.max(1, Math.ceil(24 / h))) ctx.fillText(String(y), 20, 40 + (y + .5) * h);
   sample.cells.forEach((agent, index) => {
     const x = 40 + (index % sample.width) * w, y = 40 + Math.floor(index / sample.width) * h;
