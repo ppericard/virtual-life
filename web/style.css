@@ -16,6 +16,17 @@ button, select, input { font: inherit; font-size: 14px; border: 1px solid #92a59
 button { cursor: pointer; }button:hover:not(:disabled) { background: #e0eae4; }#resume { background: #254f45; color: white; }#resume:hover:not(:disabled) { background: #326758; }
 button:disabled { opacity: .45; cursor: default; }button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid #bd8139; outline-offset: 3px; }
 #restart-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex-basis: 100%; } #restart-controls .buttons { flex-wrap: wrap; } #seed { width: 24ch; max-width: 100%; font-variant-numeric: tabular-nums; } #seed[aria-invalid="true"] { border-color: #a44324; }
+#preset-controls { flex-basis: 100%; min-width: 0; padding: 12px 0 0; margin: 0; border: 0; }
+#preset-controls legend { font-size: 14px; font-weight: 650; padding: 0; }
+#preset-controls p { margin: 8px 0; } #preset-controls summary { font-size: 12px; cursor: pointer; }
+#preset-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+#preset-options button { text-align: left; padding: 12px; }
+#preset-options strong, #preset-options span { display: block; }
+#preset-options span { margin-top: 6px; font-size: 12px; line-height: 1.5; color: #536662; }
+#preset-options button[aria-pressed="true"] { border-color: #254f45; background: #e3eee8; box-shadow: inset 0 0 0 1px #254f45; }
+#next-preset { font-size: 14px; } #preset-weights { overflow-wrap: anywhere; }
+@media (max-width: 1000px) { #preset-options { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { #preset-options { grid-template-columns: minmax(0, 1fr); } }
 #control-message { font-size: 12px; margin: 0; flex: 1; min-width: 210px; color: #536662; }
 #connection { background: #fff0dc; color: #6a3812; padding: 12px; border: 1px solid #ce9e69; border-radius: 5px; }
 .workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; padding: 30px 0; }

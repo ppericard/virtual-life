@@ -3,6 +3,7 @@ const byId = id => document.getElementById(id);
 const history = [];
 const runHeader = 'X-VirtualLife-Run';
 let runId = null;
+let pendingPreset = '';
 let sample, selected = '', connected = false, busy = false, receipt = null, commandVersion = 0;
 
 function controls() {
@@ -11,6 +12,45 @@ function controls() {
   byId('pause').disabled = !ready || sample.status !== 'running';
   byId('resume').disabled = !ready || sample.status !== 'paused';
   for (const id of ['seed', 'restart-seed', 'restart-random']) byId(id).disabled = !ready || !sample.experiment;
+  for (const button of byId('preset-options').querySelectorAll('button')) button.disabled = !ready;
+}
+function showPresetSelection(info) {
+  const catalog = info?.presets ?? [];
+  if (!catalog.length) return;
+  for (const button of byId('preset-options').querySelectorAll('button')) {
+    button.setAttribute('aria-pressed', String(button.dataset.preset === pendingPreset));
+  }
+  const current = catalog.find(preset => preset.id === info.preset);
+  const chosen = catalog.find(preset => preset.id === pendingPreset);
+  byId('current-preset').textContent = `Current run: ${current?.name ?? 'Custom settings'}.`;
+  byId('next-preset').textContent = `Next restart: ${chosen?.name ?? 'Custom settings'}. Use either Restart button to apply.`;
+  const groups = chosen ? chosen.bundles.map((weights, i) => ({weights, proportion: chosen.proportions[i]})) : info.groups;
+  byId('preset-weights').textContent = groups.map((group, i) => `${groupLabel(i)}: ${group.weights.join(' / ')} (proportion ${group.proportion})`).join('; ');
+}
+function syncPresets(info) {
+  const catalog = info?.presets ?? [];
+  byId('preset-controls').hidden = !catalog.length;
+  pendingPreset = info?.preset ?? '';
+  const options = byId('preset-options'); options.replaceChildren();
+  const choices = !catalog.length || info.preset ? catalog : [...catalog, {
+    id: '', name: 'Keep current custom settings', description: 'Retain the current weight bundles and proportions.',
+  }];
+  for (const preset of choices) {
+    const button = document.createElement('button'); button.type = 'button';
+    button.dataset.preset = preset.id; button.setAttribute('aria-label', preset.name);
+    const title = document.createElement('strong'); title.textContent = preset.name;
+    const description = document.createElement('span'); description.textContent = preset.description;
+    description.id = `preset-description-${preset.id || 'custom'}`;
+    button.setAttribute('aria-describedby', description.id);
+    button.append(title, description);
+    button.addEventListener('click', () => {
+      if (busy || !connected) return;
+      pendingPreset = preset.id;
+      showPresetSelection(sample.experiment);
+    });
+    options.append(button);
+  }
+  showPresetSelection(info);
 }
 function paintCanvases() {
   if (!sample) return;
@@ -41,9 +81,10 @@ function receiveRun(next, nextRun) {
       byId('control-message').textContent = '';
       byId('run-message').textContent = 'New experiment connected. Previous page history and selection cleared. No commands retried.';
     }
-    // Seed edits survive ordinary polling and same-run reconnection.
+    // Pending seed/preset edits survive polling and same-run reconnection.
     byId('seed').value = next.experiment?.seed ?? '1';
     byId('seed').removeAttribute('aria-invalid');
+    syncPresets(next.experiment);
   }
   runId = nextRun;
   sample = next;
@@ -102,6 +143,7 @@ async function command(name, restart = false) {
     }
     byId('seed').removeAttribute('aria-invalid');
     body = name === 'seed' ? { seed: BigInt(seed).toString() } : { random: true };
+    if (pendingPreset && pendingPreset !== sample.experiment.preset) body.preset = pendingPreset;
   }
   const version = ++commandVersion;
   busy = true; controls();
