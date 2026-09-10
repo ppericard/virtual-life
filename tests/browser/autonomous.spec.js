@@ -142,13 +142,13 @@ test.describe('autonomous visual experiment', () => {
     expect(initial.experiment.groups.map(g=>g.initial_count)).toEqual(['4','4','3','3']);
     const pixels = await page.locator('#grid').evaluate(canvas => {
       const ctx=canvas.getContext('2d');
-      // 8 x 6 square cells have pitch 67.5 on both axes, plus coordinate margins.
-      return Array.from({length:48},(_,i)=>'#'+[...ctx.getImageData((40+i%8*67.5+5)*canvas.width/600,(40+Math.floor(i/8)*67.5+5)*canvas.height/465,1,1).data].slice(0,3).map(n=>n.toString(16).padStart(2,'0')).join(''));
+      // 8 x 6 square cells have pitch 67.5 on both axes, inside an 8-unit frame.
+      return Array.from({length:48},(_,i)=>'#'+[...ctx.getImageData((8+i%8*67.5+5)*canvas.width/556,(8+Math.floor(i/8)*67.5+5)*canvas.height/421,1,1).data].slice(0,3).map(n=>n.toString(16).padStart(2,'0')).join(''));
     });
     expect(pixels).toEqual(initial.cells.map(agent=>agent?colors[agent.group]:'#f5f7f2'));
     const index=initial.cells.findIndex(Boolean), agent=initial.cells[index];
     const canvas=page.locator('#grid'), box=await canvas.boundingBox();
-    await canvas.click({position:{x:(40+(index%8+.5)*67.5)*box.width/600,y:(40+(Math.floor(index/8)+.5)*67.5)*box.height/465}});
+    await canvas.click({position:{x:(8+(index%8+.5)*67.5)*box.width/556,y:(8+(Math.floor(index/8)+.5)*67.5)*box.height/421}});
     await expect(page.locator('#inspection')).toHaveText(`ID ${agent.id} · Group ${String.fromCharCode(65+agent.group)} · Weights (wait, move, copy, remove): ${agent.weights.join(', ')} · Position (${index%8}, ${Math.floor(index/8)})`);
     await save(page,info,'autonomous-initial-inspection');
     // Ten explicit steps are deterministic barriers and give adjacent plot samples.

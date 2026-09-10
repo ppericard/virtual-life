@@ -231,9 +231,9 @@ test.describe('large-world coordinates', () => {
     viewport: {width: 1920, height: 1080}, deviceScaleFactor: 1,
     serverArgs: ['--mode', 'autonomous', '--width', '160', '--height', '100', '--occupancy', '0.05'],
   });
-  test('coordinate labels leave readable gaps without changing the observed world', async ({page, context, server}, info) => {
+  test('compact world omits numbered axes while retaining exact inspection and history', async ({page, context, server}, info) => {
     await page.addInitScript(() => {
-      // Observe real canvas text operations and font metrics; leave rendering untouched.
+      // Observe real canvas text operations; leave rendering untouched.
       const clear = CanvasRenderingContext2D.prototype.clearRect;
       const fill = CanvasRenderingContext2D.prototype.fillText;
       CanvasRenderingContext2D.prototype.clearRect = function(...args) {
@@ -242,16 +242,7 @@ test.describe('large-world coordinates', () => {
       };
       CanvasRenderingContext2D.prototype.fillText = function(text, x, y, ...args) {
         if (this.canvas.id === 'grid' && /^\d+$/.test(text)) {
-          const metrics = this.measureText(text), box = this.canvas.getBoundingClientRect();
-          const transform = this.getTransform();
-          const sx = transform.a * box.width / this.canvas.width;
-          const sy = transform.d * box.height / this.canvas.height;
-          window.coordinateLabels.push({text, axis: y < 40 ? 'x' : 'y',
-            left: (x - metrics.actualBoundingBoxLeft) * sx,
-            right: (x + metrics.actualBoundingBoxRight) * sx,
-            top: (y - metrics.actualBoundingBoxAscent) * sy,
-            bottom: (y + metrics.actualBoundingBoxDescent) * sy,
-          });
+          window.coordinateLabels.push(text);
         }
         return fill.call(this, text, x, y, ...args);
       };
@@ -267,40 +258,30 @@ test.describe('large-world coordinates', () => {
     await clickCell(page, before, occupied);
     const selected = before.cells[occupied].id;
     await expect(page.locator('#agent')).toHaveValue(selected);
-    const checkLabels = async () => {
-      const labels = await page.evaluate(() => window.coordinateLabels);
+    const checkCompactFrame = async () => {
+      expect(await page.evaluate(() => window.coordinateLabels)).toEqual([]);
       const box = await page.locator('#grid').boundingBox();
-      const horizontal = labels.filter(label => label.axis === 'x');
-      const vertical = labels.filter(label => label.axis === 'y');
-      expect(horizontal.some(label => Number(label.text) >= 100)).toBe(true);
-      expect(vertical.length).toBeGreaterThan(1);
-      for (const label of labels) {
-        expect(label.left).toBeGreaterThanOrEqual(0);
-        expect(label.right).toBeLessThanOrEqual(box.width);
-        expect(label.top).toBeGreaterThanOrEqual(0);
-        expect(label.bottom).toBeLessThanOrEqual(box.height);
-      }
-      for (let i = 1; i < horizontal.length; i++) {
-        expect(horizontal[i].left - horizontal[i - 1].right,
-          `gap between x labels ${horizontal[i - 1].text} and ${horizontal[i].text}`)
-          .toBeGreaterThanOrEqual(4 * box.width / 600);
-      }
-      for (let i = 1; i < vertical.length; i++) {
-        expect(vertical[i].top - vertical[i - 1].bottom).toBeGreaterThanOrEqual(4 * box.width / 600);
-      }
+      const cells = await page.evaluate(() => window.gridPaint.cells);
+      const first = cells[0], last = cells.at(-1);
+      // Visible edge space is small and balanced, rather than a reserved axis gutter.
+      expect(first.x).toBeLessThan(box.width * .025);
+      expect(first.y).toBeCloseTo(first.x, 1);
+      expect(box.width - last.x - last.w).toBeCloseTo(first.x, 1);
+      expect(box.height - last.y - last.h).toBeCloseTo(first.y, 1);
+      await expect(page.locator('#inspection')).toContainText(`Position (${occupied % before.width}, ${Math.floor(occupied / before.width)})`);
     };
-    await checkLabels();
-    await save(page, info, 'coordinates-160x100-wide');
+    await checkCompactFrame();
+    await save(page, info, 'compact-160x100-wide');
     await context.setOffline(true);
     await expect(page.getByRole('alert')).toContainText('Connection lost');
     await page.setViewportSize({width: 390, height: 844});
     await checkLayout(page, 390);
-    await checkLabels();
+    await checkCompactFrame();
     await expect(page.locator('#tick')).toHaveText('0');
     await expect(page.locator('#agent')).toHaveValue(selected);
     await expect(page.locator('#samples')).toHaveText(samples);
     await expect(page.locator('#plot')).toHaveAttribute('aria-label', plot);
-    await save(page, info, 'coordinates-160x100-narrow');
+    await save(page, info, 'compact-160x100-narrow');
     expect(writes).toBe(0);
     await context.setOffline(false);
     await expect(page.getByRole('alert')).toBeHidden();
