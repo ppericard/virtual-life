@@ -359,6 +359,98 @@ fn fixed_tick_results_ignore_observation_rate_backpressure_and_disconnect() {
         .expect("observation checks exceeded deadlock guard");
 }
 
+#[test]
+fn wear_crowding_v2_seed_one_records_exact_tick_ten_world_and_failures() {
+    let config = ExperimentConfig {
+        width: 8,
+        height: 6,
+        ..ExperimentConfig::default()
+    };
+    assert_eq!(config.protocol(), "wear-repair crowding v2");
+    let (mut world, mut random, info) = config.initialize().unwrap();
+    for _ in 0..10 {
+        world
+            .step(&experiment::proposals(&world, &mut random))
+            .unwrap();
+    }
+    let mut expected = vec![None; 48];
+    for (id, x, y, group, integrity) in [
+        (23, 3, 0, 0, 7),
+        (22, 6, 0, 1, 9),
+        (26, 7, 0, 1, 8),
+        (5, 2, 1, 1, 4),
+        (19, 0, 2, 0, 1),
+        (24, 1, 2, 3, 9),
+        (4, 2, 2, 0, 9),
+        (16, 3, 2, 1, 10),
+        (27, 4, 2, 2, 8),
+        (25, 5, 2, 2, 6),
+        (1, 3, 3, 0, 5),
+        (15, 4, 3, 1, 10),
+        (20, 5, 3, 1, 2),
+        (9, 6, 3, 2, 10),
+        (10, 1, 4, 2, 2),
+        (8, 4, 4, 1, 8),
+        (21, 6, 4, 1, 4),
+        (3, 7, 4, 2, 6),
+        (28, 1, 5, 2, 10),
+        (6, 5, 5, 1, 7),
+        (18, 7, 5, 1, 6),
+    ] {
+        expected[y * 8 + x] = Some(Agent {
+            id,
+            value: 0,
+            weights: config.bundles[group],
+            integrity,
+        });
+    }
+    assert_eq!(world.cells(), expected);
+    assert_eq!(world.tick(), 10);
+    assert_eq!(world.next_id(), 29);
+    assert_eq!(info.counts(world.cells()), [4, 10, 6, 1]);
+    assert_eq!(
+        world.totals(),
+        virtual_life::engine::Events {
+            moves: 34,
+            creations: 14,
+            removals: 7,
+            value_changes: 0,
+            repairs: 54,
+            failures: 7,
+        }
+    );
+    assert_eq!(world.discarded_failures(), 0);
+    use virtual_life::engine::FailureReason::{CopyWear, MoveWear, Upkeep};
+    let failures: Vec<_> = world
+        .failures()
+        .iter()
+        .map(|f| {
+            (
+                f.id,
+                f.tick,
+                f.position.x,
+                f.position.y,
+                f.reason,
+                f.integrity_before,
+                f.upkeep,
+                f.action_wear,
+            )
+        })
+        .collect();
+    assert_eq!(
+        failures,
+        [
+            (12, 5, 7, 2, MoveWear, 2, 1, 1),
+            (7, 5, 0, 3, MoveWear, 2, 1, 1),
+            (11, 5, 4, 5, MoveWear, 2, 1, 1),
+            (14, 7, 0, 4, Upkeep, 1, 1, 0),
+            (13, 8, 0, 0, Upkeep, 1, 1, 0),
+            (2, 8, 3, 5, Upkeep, 1, 1, 0),
+            (17, 10, 3, 1, CopyWear, 2, 1, 2),
+        ]
+    );
+}
+
 fn check_observation_independence(configuration: ExperimentConfig) {
     let base = Config {
         ticks: 240,

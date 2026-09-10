@@ -26,6 +26,7 @@ fn repair_only_population_maintains_integrity_in_the_default_experiment() {
     assert!(text.contains("tick=2 count=9"), "{text}");
     assert!(text.contains("repairs=18 failures=0"), "{text}");
     assert!(text.contains("integrity=10/10"), "{text}");
+    assert!(text.contains("protocol=wear-repair crowding v2"), "{text}");
 }
 
 #[test]
@@ -95,6 +96,7 @@ fn autonomous_cli_records_reproducible_effective_settings_and_final_population()
     let text = String::from_utf8(first.stdout).unwrap();
     for expected in [
         "seed=1 generator=SplitMix64 / VirtualLife sampling v1",
+        "protocol=random v1",
         "width=8 height=6 occupancy=0.300000 ticks=10 initial_count=14",
         "group=0 weights=[4, 5, 1, 1] proportion=1 initial_count=4",
         "tick=10 count=9",

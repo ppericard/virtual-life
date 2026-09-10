@@ -236,6 +236,90 @@ fn bounded_failure_records_retain_tick_order_and_count_discarded_records() {
 }
 
 #[test]
+fn full_neighborhood_transfers_copy_to_wait_before_neighbors_fail_upkeep() {
+    let agents: Vec<_> = (0..9)
+        .map(|index| {
+            (
+                p(index % 3, index / 3),
+                Agent {
+                    weights: Weights([0, 0, 1, 0]),
+                    ..agent(index as u64 + 1, if index == 0 { 3 } else { 1 })
+                },
+            )
+        })
+        .collect();
+    let mut w = World::with_maintenance(3, 3, &agents, Maintenance::default()).unwrap();
+    let mut random = Random::new(1);
+    let chosen = experiment::proposals(&w, &mut random);
+    assert_eq!(chosen, [Proposal::new(1, Action::Wait)]);
+    let events = w.step(&chosen).unwrap();
+    assert_eq!((events.failures, events.creations, w.count()), (8, 0, 1));
+    assert_eq!(condition(&w, 1), 2); // No Copy choice, so no unaffordable Copy wear.
+    assert_eq!(
+        w.agent_at(p(0, 0)).unwrap().unwrap().weights,
+        Weights([0, 0, 1, 0])
+    );
+    assert_eq!(experiment::proposals(&w, &mut random).len(), 1);
+}
+
+#[test]
+fn crowded_copy_keeps_all_eight_targets_and_draws_before_affordability() {
+    let copy = Weights([0, 0, 1, 0]);
+    let mut agents = vec![(
+        p(0, 0),
+        Agent {
+            weights: copy,
+            ..agent(1, 10)
+        },
+    )];
+    for index in 1..8 {
+        agents.push((
+            p(index % 3, index / 3),
+            Agent {
+                weights: copy,
+                ..agent(index as u64 + 1, 1)
+            },
+        ));
+    }
+    // Only (2,2) is empty; all seven other neighbours fail upkeep this tick.
+    let affordable = World::with_maintenance(3, 3, &agents, Maintenance::default()).unwrap();
+    agents[0].1.integrity = 3;
+    let unaffordable = World::with_maintenance(3, 3, &agents, Maintenance::default()).unwrap();
+    let mut targets = std::collections::HashSet::new();
+    for seed in 0..1024 {
+        let mut first = Random::new(seed);
+        let mut second = first.clone();
+        let chosen = experiment::proposals(&affordable, &mut first);
+        assert_eq!(chosen, experiment::proposals(&unaffordable, &mut second));
+        assert_eq!(first, second);
+        if let Action::Create(target) = chosen[0].action {
+            targets.insert((target.x, target.y));
+            let mut succeeds = affordable.clone();
+            let mut fails = unaffordable.clone();
+            let accepted = succeeds.step(&chosen).unwrap();
+            let rejected = fails.step(&chosen).unwrap();
+            assert_eq!(accepted.creations, u64::from(target == p(2, 2)));
+            assert_eq!(condition(&succeeds, 1), 7);
+            assert_eq!(
+                (rejected.failures, rejected.creations, fails.count()),
+                (8, 0, 0)
+            );
+            assert_eq!(fails.failures()[0].reason, FailureReason::CopyWear);
+            assert!(succeeds.cells().iter().flatten().all(|a| a.weights == copy));
+        }
+    }
+    assert_eq!(
+        targets,
+        affordable
+            .neighbors(p(0, 0))
+            .unwrap()
+            .into_iter()
+            .map(|target| (target.x, target.y))
+            .collect()
+    );
+}
+
+#[test]
 fn zero_costs_and_repair_can_sustain_life_and_large_restoration_cannot_overflow() {
     for rules in [
         Maintenance {

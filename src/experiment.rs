@@ -117,7 +117,7 @@ impl ExperimentConfig {
     }
     pub fn protocol(&self) -> &'static str {
         if self.maintenance.is_some() {
-            "wear-repair v1"
+            "wear-repair crowding v2"
         } else {
             "random v1"
         }
@@ -230,8 +230,8 @@ impl ExperimentConfig {
     }
 }
 
-/// Each starting individual chooses once in row-major order. A future local rule
-/// can inspect world.neighbors(position) and world.agent_at(neighbor) here.
+/// Each starting individual chooses once in row-major order. Wear-repair reduces
+/// Copy according to starting empty neighbours and transfers its lost share to Wait.
 /// Requires a validated autonomous world: every agent has a positive weight sum.
 pub fn proposals(world: &World, random: &mut Random) -> Vec<Proposal> {
     world
@@ -246,22 +246,34 @@ pub fn proposals(world: &World, random: &mut Random) -> Vec<Proposal> {
             {
                 return None; // Upkeep failure is resolved before action choice; no draw.
             }
-            let total: u64 = agent
-                .weights
-                .0
-                .iter()
-                .map(|&weight| u64::from(weight))
-                .sum();
+            let position = Position::new(index % world.width(), index / world.width());
+            let mut tickets = agent.weights.0.map(u64::from);
+            if world.maintenance().is_some() {
+                let empty = world
+                    .neighbors(position)
+                    .unwrap()
+                    .iter()
+                    .filter(|&&neighbor| world.agent_at(neighbor).unwrap().is_none())
+                    .count() as u64;
+                let [wait, movement, copy, repair] = tickets;
+                // Eightfold tickets keep odd/fractional Copy shares exact. The
+                // total is 8 * sum(base weights), at most 32 * u32::MAX in u64.
+                tickets = [
+                    8 * wait + (8 - empty) * copy,
+                    8 * movement,
+                    empty * copy,
+                    8 * repair,
+                ];
+            }
+            let total: u64 = tickets.iter().sum();
             let mut draw = random.below(total);
-            let choice = agent
-                .weights
-                .0
+            let choice = tickets
                 .iter()
                 .position(|&weight| {
-                    if draw < u64::from(weight) {
+                    if draw < weight {
                         true
                     } else {
-                        draw -= u64::from(weight);
+                        draw -= weight;
                         false
                     }
                 })
@@ -269,7 +281,6 @@ pub fn proposals(world: &World, random: &mut Random) -> Vec<Proposal> {
             let action = match choice {
                 0 => Action::Wait,
                 1 | 2 => {
-                    let position = Position::new(index % world.width(), index / world.width());
                     let target = world.neighbors(position).unwrap()[random.below(8) as usize];
                     if choice == 1 {
                         Action::Move(target)
@@ -288,6 +299,134 @@ pub fn proposals(world: &World, random: &mut Random) -> Vec<Proposal> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn crowding_selection_uses_exact_tickets_starting_occupancy_and_one_action_draw() {
+        let maximum = u64::from(u32::MAX);
+        let cases = [
+            (Weights([2, 4, 1, 3]), 8, [16, 32, 8, 24]),
+            (Weights([2, 4, 1, 3]), 4, [20, 32, 4, 24]),
+            (Weights([2, 4, 1, 3]), 0, [24, 32, 0, 24]),
+            (Weights([1, 2, 3, 4]), 1, [29, 16, 3, 32]),
+            (Weights([1, 2, 3, 4]), 7, [11, 16, 21, 32]),
+            (Weights([1, 2, 0, 4]), 0, [8, 16, 0, 32]),
+            (Weights([1, 2, 0, 4]), 7, [8, 16, 0, 32]),
+            (
+                Weights([u32::MAX; 4]),
+                0,
+                [16 * maximum, 8 * maximum, 0, 8 * maximum],
+            ),
+            (
+                Weights([u32::MAX; 4]),
+                1,
+                [15 * maximum, 8 * maximum, maximum, 8 * maximum],
+            ),
+            (
+                Weights([u32::MAX; 4]),
+                7,
+                [9 * maximum, 8 * maximum, 7 * maximum, 8 * maximum],
+            ),
+            (Weights([u32::MAX; 4]), 8, [8 * maximum; 4]),
+        ];
+        // Explicit coordinates include wrapping at the corner. Neighbours are
+        // doomed by upkeep but still occupy their starting squares for choice.
+        for (position, neighbors) in [
+            (
+                Position::new(2, 2),
+                [
+                    (1, 1),
+                    (2, 1),
+                    (3, 1),
+                    (1, 2),
+                    (3, 2),
+                    (1, 3),
+                    (2, 3),
+                    (3, 3),
+                ],
+            ),
+            (
+                Position::new(0, 0),
+                [
+                    (4, 4),
+                    (0, 4),
+                    (1, 4),
+                    (4, 0),
+                    (1, 0),
+                    (4, 1),
+                    (0, 1),
+                    (1, 1),
+                ],
+            ),
+        ] {
+            for (weights, empty, tickets) in cases {
+                let mut agents = vec![(
+                    position,
+                    Agent {
+                        id: 1,
+                        weights,
+                        integrity: 10,
+                        ..Agent::default()
+                    },
+                )];
+                for (index, &(x, y)) in neighbors.iter().take(8 - empty).enumerate() {
+                    agents.push((
+                        Position::new(x, y),
+                        Agent {
+                            id: index as u64 + 2,
+                            weights,
+                            integrity: 1,
+                            ..Agent::default()
+                        },
+                    ));
+                }
+                let world = World::with_maintenance(5, 5, &agents, Maintenance::default()).unwrap();
+                let before = world.clone();
+                let mut seen = [false; 4];
+                for seed in 0..1024 {
+                    let mut expected_random = Random::new(seed);
+                    let draw = expected_random.below(tickets.iter().sum());
+                    let choice = if draw < tickets[0] {
+                        0
+                    } else if draw < tickets[0] + tickets[1] {
+                        1
+                    } else if draw < tickets[0] + tickets[1] + tickets[2] {
+                        2
+                    } else {
+                        3
+                    };
+                    seen[choice] = true;
+                    let expected = match choice {
+                        0 => Action::Wait,
+                        1 | 2 => {
+                            let (x, y) = neighbors[expected_random.below(8) as usize];
+                            if choice == 1 {
+                                Action::Move(Position::new(x, y))
+                            } else {
+                                Action::Create(Position::new(x, y))
+                            }
+                        }
+                        _ => Action::Repair,
+                    };
+                    let mut actual_random = Random::new(seed);
+                    assert_eq!(
+                        proposals(&world, &mut actual_random),
+                        [Proposal::new(1, expected)],
+                        "seed {seed}, empty {empty}, weights {weights:?}, position {position:?}"
+                    );
+                    assert_eq!(
+                        actual_random, expected_random,
+                        "only the selected spatial action draws a destination"
+                    );
+                }
+                assert_eq!(seen, tickets.map(|tickets| tickets > 0));
+                assert_eq!(
+                    world, before,
+                    "choice cannot edit properties, integrity or occupancy"
+                );
+            }
+        }
+    }
+
     #[test]
     fn generator_v1_reference_stream() {
         let mut random = Random::new(0);

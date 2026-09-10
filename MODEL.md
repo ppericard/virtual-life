@@ -1,6 +1,6 @@
 # VirtualLife — model and examples
 
-**Model status:** the approved autonomous default is the wear-and-repair experiment below. Four property bundles drive individual choices; survival follows integrity and operating history. The earlier random-removal Option A and scripted fixture remain available for comparison and regression coverage. None is evidence of biological realism or emergence. See [README](README.md) for the overview and [the development reference](docs/development.md#verification) for usage and checks.
+**Model status:** the approved autonomous default is wear and repair with Copy reduced by local crowding. Four inherited property bundles and starting neighbour occupancy drive individual choices; survival follows integrity and operating history. The earlier random-removal Option A and scripted fixture remain available for comparison and regression coverage. None is evidence of biological realism or emergence. See [README](README.md) for the overview and [the development reference](docs/development.md#verification) for usage and checks.
 
 ## Confirmed starting constraints
 
@@ -76,7 +76,7 @@ The native process owns the experiment. Refreshing, closing, hiding, or disconne
 
 **6 September 2026 — browser interface (Pierre's decision):** replace the native window with a small local browser observer/control surface, retaining the native Rust engine and headless execution. Observation is bounded and independent of rendering. Browser lifetime no longer owns worker lifetime. This changes application lifecycle, not transition rules or the scripted table.
 
-**9 September 2026 — Option A (Pierre's decision):** implement the four-property-group autonomous experiment below. This supersedes issue #8's earlier identical-properties proposal and awaiting-model-choice wording. Neighbour-dependent behaviour is the immediate follow-up, but its rules require Pierre's next decision.
+**9 September 2026 — Option A (Pierre's decision):** implement the four-property-group autonomous experiment below. This supersedes issue #8's earlier identical-properties proposal and awaiting-model-choice wording. The subsequently approved wear-repair crowding rule below supplies the first neighbour-dependent choice.
 
 ## Wear and repair: survival through operating history
 
@@ -84,7 +84,7 @@ The native process owns the experiment. Refreshing, closing, hiding, or disconne
 
 The default is `--survival wear-repair`, with maximum 10, upkeep 1, extra move wear 1, extra copy wear 2 and gross repair 4. The fourth choice is Repair, replacing Remove. Default bundles are A `(2,4,1,3)`, B `(2,2,2,4)`, C `(4,1,1,4)` and D `(1,5,2,2)`. The 32 × 24 grid, occupancy 0.3, equal proportions, seed 1 and 500-tick limit are unchanged. These are adjustable illustrative settings, not values tuned for coexistence or biological calibration.
 
-For every tick, validate all state, rules and proposals without mutation. An individual with `integrity <= upkeep` fails maintenance and is removed before choosing or performing any action. It cannot repair itself in that tick. Otherwise it pays upkeep and chooses one weighted action using the common policy:
+For every tick, validate all state, rules and proposals without mutation. An individual with `integrity <= upkeep` fails maintenance and is removed before choosing or performing any action. It cannot repair itself in that tick. Otherwise it pays upkeep and chooses one weighted action using the crowding policy below:
 
 - **Wait:** no further change; upkeep has still been paid.
 - **Move or Copy:** draw uniformly among all eight neighbours, before checking affordability or occupancy. If integrity after upkeep is less than or equal to the extra wear, the individual fails before the spatial action. It makes no claim, creates no child and allocates no ID. Otherwise charge the wear, even when occupancy or competing claims subsequently reject the destination. There are no retries.
@@ -93,6 +93,19 @@ For every tick, validate all state, rules and proposals without mutation. An ind
 Only affordable move/copy attempts claim destinations. All claims still use the unchanged starting grid: competing affordable claims all fail, including mixed move/copy claims. A square vacated by failure remains start-occupied and unavailable until the next tick. Normal wrapping, single occupancy, stable IDs and row-major creation-ID allocation remain unchanged. Integrity updates, spatial outcomes, IDs, events and failure evidence commit atomically; invalid input or exhausted counters leave both buffers and all state unchanged.
 
 A successful copy inherits the parent's weight tuple, receives a fresh ID and starts at shared maximum integrity. The parent pays upkeep and copy wear and retains its ID. The newborn first acts next tick. This is a fresh functional condition, **not an energy-conservation model**; there is no energy or material account to duplicate. Initial individuals also start at maximum integrity.
+
+### Copy tendency responds to local space
+
+**10 September 2026 — Pierre's decision:** multiply Copy's base probability by the fraction of the eight starting neighbours that are empty, transferring the removed probability to Wait. This applies only to autonomous wear-repair. For inherited weights `(W,M,C,R)` and `E` empty neighbours, choose from the exact integer tickets:
+
+```text
+Wait: 8W + (8-E)C    Move: 8M    Copy: EC    Repair: 8R
+Total: 8(W+M+C+R)
+```
+
+Multiplying all tickets by eight avoids rounding fractional Copy shares. With `(2,4,1,3)`, all eight empty gives `(16,32,8,24)` and the original probabilities; four empty gives `(20,32,4,24)`, halving Copy from 1/10 to 1/20; none empty gives `(24,32,0,24)`. With odd Copy weight 3 in `(1,2,3,4)`, one empty gives `(29,16,3,32)` and seven empty gives `(11,16,21,32)`. Zero Copy stays zero. Individual weights, inheritance and species grouping are unchanged; these temporary tickets are not new properties.
+
+Read occupancy from the unchanged starting world, including wrapped neighbours and individuals that will fail upkeep this tick. Do not count their squares as empty in advance. If the chooser itself fails upkeep it makes no draw. Move and Repair probabilities remain unchanged; selected Move/Copy still draw uniformly among **all eight neighbours**, before affordability, with no filtering or retry. Crowding changes Copy intent frequency, not the existing rules for whether an attempt succeeds. Full-neighbourhood Copy-only individuals choose Wait and pay only upkeep that tick.
 
 ### Worked conditions and boundaries
 
@@ -114,7 +127,9 @@ Maximum must be positive. Costs/restoration may be zero and may exceed the maxim
 
 Every failure has an engine-recorded cause: **upkeep**, **move wear** or **copy wear**. Records include ID, resulting tick, starting position, starting integrity, upkeep and selected extra wear (zero when upkeep failed first). Each run retains the latest 128 records in tick then starting-square order, counts discarded older records, and retains cumulative repairs/failures. This evidence is recorded on every simulation tick independently of viewers or sample cadence; it is bounded causal evidence, not a complete event journal. Inspection can report a selected individual's retained failure or state that its record has been discarded. Plot gaps do not fabricate events. Reconnection retains the same run's server evidence; a new experiment clears it.
 
-Initialization and bounded random draws use the SplitMix64 procedure below. The **wear-repair v1** policy scans occupied starting squares in row-major order, skips all random draws for individuals unable to survive upkeep, then draws one weighted action for every survivor. Move/Copy always draws one neighbour (plus any raw rejection draws), including unaffordable attempts. Wait/Repair draws no destination. Integrity costs and repair consume no random draws. This protocol differs from the earlier random-removal policy; record the survival setting and protocol as well as configuration, seed and source version.
+Initialization and bounded random draws use the SplitMix64 procedure below. The **wear-repair crowding v2** policy scans occupied starting squares in row-major order, skips all random draws for individuals unable to survive upkeep, then makes one bounded action draw below `8(W+M+C+R)` for every survivor. Tickets and their total use `u64`; with four `u32` base weights the total is at most `32 × u32::MAX`, safely below the limit. Do not simplify the common factor even when all eight neighbours are empty or Copy is zero: the bound is part of the reproducible protocol. Move/Copy then draws below 8, including unaffordable attempts. Wait/Repair draws no destination. Bounded-draw rejection still consumes raw generator values as documented; counting occupancy, adjusting tickets, integrity costs and repair add no random draws.
+
+The new action bound and crowding choices intentionally change wear-repair seeded trajectories relative to **wear-repair v1**, even where probabilities coincide. Initialization is unchanged. The random-removal comparison remains **random v1**, with its original bounds and draw order. Record the action protocol as well as settings, seed, source commit and Cargo.lock when reproducing results; a v1 wear result requires its earlier source version.
 
 ## Option A comparison: random removal
 
@@ -144,8 +159,8 @@ To draw uniformly below N, discard raw values below `(-N modulo 2^64) modulo N`,
 
 Record the seed, effective configuration, generator/protocol name and crate version with results; keep the source commit/Cargo.lock for exact reproduction. The same configuration and code produces the same fixed-tick world and accepted-event totals with observation disabled, enabled, saturated, disconnected or sampled differently. Rendering, pacing and the HTTP adapter's OS-random run identity consume no simulation draws. A seed alone does not promise identical outcomes across arbitrary code or dependency changes. Live samples are bounded and incomplete, not a saved trajectory.
 
-### Immediate model checkpoint: local neighbours
+### Limits of the local rule
 
-Action selection is a separate function receiving the read-only starting `World`; it can already read each individual's position and the eight neighbours' actual properties through `neighbors` and `agent_at`. Transition resolution and presentation do not need duplicate implementations. No neighbourhood framework or interaction matrix is introduced.
+Action selection reads starting occupancy through `neighbors` and `agent_at`. The approved crowding rule considers whether a square is empty, not its occupant's properties or condition. Transition resolution and presentation do not need duplicate implementations. No neighbourhood framework or interaction matrix is introduced.
 
-Neighbour-dependent choices remain the immediate model follow-up. Wear and repair adds no neighbour-property-dependent action selection, resources, energy economy, mutation or interaction matrix. Choose the question and exact local rule with worked examples before that next increment.
+Further neighbour-property-dependent choices, resources, energy economy, mutation and interaction matrices remain outside the model. Choose the question and exact rule with worked examples before adding another interaction.
