@@ -26,7 +26,9 @@ Open the printed address, normally **http://127.0.0.1:7878**, in your browser. U
 
 The autonomous experiment starts with 230 randomly placed agents in a 32 × 24 grid. Each chooses wait, move, copy or repair according to its group's fixed weights. Upkeep and activity wear reduce integrity; repair restores it, and failure to maintain positive integrity removes the individual. Inspect condition and recorded failure causes alongside population changes. These adjustable settings are illustrative, not calibrated biology; continued survival and extinction are valid outcomes. It starts paused and keeps the final state visible after 500 ticks. Use `--survival random` with autonomous mode for the earlier random-removal comparison, or `--mode demo` for the five-tick scripted regression demonstration.
 
-Stop the server with **Ctrl+C in the terminal**; closing the browser does not stop the experiment. To repeat it, restart the command. An open page reconnects automatically, clears its old history and selection, and shows a new-experiment notice.
+Use **Restart with seed** to repeat an autonomous experiment, or **Restart with random seed** to explore a new one. The editable seed starts with the launched value (normally 1); a random restart displays its chosen seed for reproduction. Restarts retain the launch settings, start paused at tick 0, and clear previous histories and selection. A zero-tick run starts completed. These controls also work after completion.
+
+Stop the server with **Ctrl+C in the terminal**; closing the browser does not stop the experiment. Restart the command to repeat the scripted demo or change launch settings. An open page follows a new experiment automatically and shows a notice. A lost restart reply has an unknown outcome: check the current experiment and seed before trying again; requests are never automatically retried.
 
 To run without a browser:
 

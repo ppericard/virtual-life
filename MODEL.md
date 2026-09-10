@@ -66,6 +66,8 @@ The native process owns the experiment. Refreshing, closing, hiding, or disconne
 
 **9 September 2026 — restart recovery (Pierre's decision):** when a retained page detects a different server run, it clears the previous run's page-local history, selection and pending control state, displays a new-experiment notice, and follows the new run's actual state. It does not resume, step or retry commands automatically. Same-run reconnect retains history. Delayed old-run control requests are rejected and old replies cannot change the new page state. Run identity belongs to the HTTP adapter, not simulation state or model randomness.
 
+**10 September 2026 — seeded restart (Pierre's decision):** an explicit browser restart replaces an autonomous experiment using an editable fixed seed (default 1) or an OS-random seed disclosed for reproduction. It retains the world, property, survival and run settings, starts paused at tick 0 (completed for a zero-tick limit), and clears prior run evidence and page histories. Completed runs can restart. Every replacement gets a new HTTP identity, including repeats with the same seed. Random seed selection consumes no simulation draws. The scripted demo and headless lifecycle are unchanged; no run restarts automatically.
+
 ## Decisions, limits, and next model checkpoint
 
 **6 September 2026 — geometry and scheduling (Pierre-confirmed):** grid, eight neighbors, single occupancy, comparable scales, and synchronous updates keep the starting algorithm understandable. This does not exclude future changes; occupancy changes may require redesign.
