@@ -3,6 +3,8 @@
 
 pub mod demo;
 pub mod engine;
+pub mod experiment;
+pub mod launch;
 pub mod runner;
 
 #[cfg(feature = "web")]

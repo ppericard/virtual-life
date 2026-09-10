@@ -1,58 +1,104 @@
-use std::{process::ExitCode, time::Duration};
-use virtual_life::{
-    demo,
-    runner::{Config, Worker},
-};
+use std::process::ExitCode;
+use virtual_life::{demo, launch, runner::Worker};
 
 fn run() -> Result<(), String> {
-    let arguments: Vec<String> = std::env::args().skip(1).collect();
-    let ticks = match arguments.as_slice() {
-        [] => demo::END_TICK,
-        [help] if help == "--help" || help == "-h" => {
-            println!(
-                "Usage: headless [--ticks N]\nDefaults to 5. After tick 5, all agents wait; only the tick advances."
-            );
-            return Ok(());
-        }
-        [flag, value] if flag == "--ticks" => value
-            .parse::<u64>()
-            .map_err(|_| "ticks must be a nonnegative integer")?,
-        _ => return Err("Usage: headless [--ticks N]".into()),
-    };
-    let world = Worker::spawn(
-        Config {
-            ticks,
-            tick_interval: Duration::ZERO,
-            start_paused: false,
-            ..Config::default()
-        },
-        None,
-    )?
-    .join()?;
-    println!("Scripted demonstrator: requested run complete (not autonomous behavior).");
-    if ticks > demo::END_TICK {
+    let launch = launch::parse(std::env::args().skip(1), false)?;
+    if launch.help {
+        println!(
+            "Usage: headless {}\nDemo defaults to 5 ticks; autonomous defaults to 500. Quote bundles containing semicolons.",
+            launch::OPTIONS
+        );
+        return Ok(());
+    }
+    launch::describe(&launch.config)?;
+    let info = launch
+        .config
+        .experiment
+        .as_ref()
+        .map(|config| config.initialize().map(|(_, _, info)| info))
+        .transpose()?;
+    let ticks = launch.config.ticks;
+    let world = Worker::spawn(launch.config, None)?.join()?;
+    if info.is_none() && ticks > demo::END_TICK {
         println!("Ticks after 5 were all-wait transitions.");
     }
     println!("tick={} count={}", world.tick(), world.count());
     let events = world.totals();
     println!(
-        "accepted: moves={} creations={} removals={} value_changes={}",
-        events.moves, events.creations, events.removals, events.value_changes
+        "accepted: moves={} creations={} removals={} value_changes={} repairs={} failures={}",
+        events.moves,
+        events.creations,
+        events.removals,
+        events.value_changes,
+        events.repairs,
+        events.failures
     );
+    if let Some(info) = &info {
+        for (index, count) in info.counts(world.cells()).iter().enumerate() {
+            println!("group={index} count={count}");
+        }
+    }
     for (index, cell) in world.cells().iter().enumerate() {
         if let Some(agent) = cell {
-            println!(
+            print!(
                 "id={} value={} at=({},{})",
                 agent.id,
                 agent.value,
                 index % world.width(),
                 index / world.width()
             );
+            if info.is_some() {
+                print!(" weights={:?}", agent.weights.0);
+            }
+            if let Some(rules) = world.maintenance() {
+                let cost = virtual_life::engine::upkeep_at(
+                    world.width(),
+                    world.height(),
+                    world.cells(),
+                    virtual_life::engine::Position::new(
+                        index % world.width(),
+                        index / world.width(),
+                    ),
+                    rules,
+                )?;
+                print!(
+                    " integrity={}/{} current_occupied_neighbors={} next_tick_upkeep={} (base={} crowding={}; displayed neighborhood)",
+                    agent.integrity,
+                    rules.maximum,
+                    cost.occupied_neighbors,
+                    cost.effective_upkeep,
+                    cost.base_upkeep,
+                    cost.crowding_upkeep
+                );
+            }
+            println!();
+        }
+    }
+    if world.maintenance().is_some() {
+        println!(
+            "recent_failures={} discarded_failures={} (latest 128 engine outcomes; independent of observation)",
+            world.failures().len(),
+            world.discarded_failures()
+        );
+        for failure in world.failures() {
+            println!(
+                "failure: id={} tick={} at=({},{}) reason={} integrity_before={} occupied_neighbors={} base_upkeep={} crowding_upkeep={} upkeep={} action_wear={}",
+                failure.id,
+                failure.tick,
+                failure.position.x,
+                failure.position.y,
+                failure.reason.label(),
+                failure.integrity_before,
+                failure.occupied_neighbors,
+                failure.base_upkeep,
+                failure.crowding_upkeep,
+                failure.upkeep,
+                failure.action_wear
+            );
         }
     }
     Ok(())
 }
-
 fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,

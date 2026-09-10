@@ -9,7 +9,8 @@ use std::time::{Duration, Instant};
 
 use crate::{
     demo,
-    engine::{Agent, Events, World},
+    engine::{Agent, Events, Failure, World},
+    experiment::{self, ExperimentConfig, ExperimentInfo, Random},
 };
 
 pub const SNAPSHOT_CAPACITY: usize = 1;
@@ -32,10 +33,19 @@ pub struct Snapshot {
     pub totals: Events,
     pub cells: Vec<Option<Agent>>,
     pub status: Status,
+    pub end_tick: u64,
+    pub experiment: Option<Arc<ExperimentInfo>>,
+    pub failures: Vec<Failure>,
+    pub discarded_failures: u64,
 }
 
 impl Snapshot {
-    fn capture(world: &World, status: Status) -> Self {
+    fn capture(
+        world: &World,
+        status: Status,
+        end_tick: u64,
+        experiment: &Option<Arc<ExperimentInfo>>,
+    ) -> Self {
         Self {
             width: world.width(),
             height: world.height(),
@@ -44,16 +54,21 @@ impl Snapshot {
             totals: world.totals(),
             cells: world.cells().to_vec(),
             status,
+            end_tick,
+            experiment: experiment.clone(),
+            failures: world.failures().iter().copied().collect(),
+            discarded_failures: world.discarded_failures(),
         }
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct Config {
     pub ticks: u64,
     pub sample_every: u64,
     pub tick_interval: Duration,
     pub start_paused: bool,
+    pub experiment: Option<ExperimentConfig>,
 }
 
 impl Default for Config {
@@ -63,6 +78,7 @@ impl Default for Config {
             sample_every: 1,
             tick_interval: Duration::from_millis(750),
             start_paused: true,
+            experiment: None,
         }
     }
 }
@@ -124,12 +140,19 @@ impl Controls {
 struct Observer {
     sender: Option<SyncSender<Snapshot>>,
     pending: Option<Snapshot>,
+    end_tick: u64,
+    experiment: Option<Arc<ExperimentInfo>>,
 }
 
 impl Observer {
     fn offer(&mut self, world: &World, status: Status) {
         if self.sender.is_some() {
-            self.pending = Some(Snapshot::capture(world, status));
+            self.pending = Some(Snapshot::capture(
+                world,
+                status,
+                self.end_tick,
+                &self.experiment,
+            ));
             self.flush();
         }
     }
@@ -152,11 +175,15 @@ struct Run {
     observer: Observer,
     next_tick: Instant,
     stopping: Arc<AtomicBool>,
+    random: Option<Random>,
 }
 
 impl Run {
     fn advance(&mut self) -> Result<(), String> {
-        let proposals = demo::proposals(&self.world);
+        let proposals = match &mut self.random {
+            Some(random) => experiment::proposals(&self.world, random),
+            None => demo::proposals(&self.world),
+        };
         self.world.step(&proposals)?;
         if self.world.tick() == self.config.ticks {
             self.status = Status::Completed;
@@ -292,13 +319,24 @@ impl Worker {
             Status::Running
         };
         let stopping = Arc::new(AtomicBool::new(false));
+        let (world, random, experiment) = match &config.experiment {
+            Some(configuration) => {
+                let (world, random, info) = configuration.initialize()?;
+                (world, Some(random), Some(Arc::new(info)))
+            }
+            None => (demo::initial_world(), None, None),
+        };
+        let end_tick = config.ticks;
         let run = Run {
-            world: demo::initial_world(),
+            world,
+            random,
             config,
             status,
             observer: Observer {
                 sender: snapshots,
                 pending: None,
+                end_tick,
+                experiment,
             },
             next_tick,
             stopping: stopping.clone(),

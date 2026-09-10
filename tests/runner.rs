@@ -67,6 +67,7 @@ fn fast() -> Config {
         sample_every: 3,
         tick_interval: Duration::ZERO,
         start_paused: false,
+        experiment: None,
     }
 }
 

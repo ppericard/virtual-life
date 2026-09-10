@@ -3,37 +3,47 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VirtualLife · Scripted grid</title>
+  <title>VirtualLife · Population experiment</title>
   <link rel="stylesheet" href="/style.css">
   <script type="module" src="/app.js"></script>
 </head>
 <body>
   <main>
-    <header><div><p class="eyebrow">VIRTUAL LIFE / EXPERIMENT 01</p><h1>A small world, one tick at a time.</h1><p class="intro">Five scripted transitions. A test of the machinery, before autonomous rules.</p></div><span id="status" role="status">Connecting</span></header>
+    <header><div><p class="eyebrow">VIRTUAL LIFE / EXPERIMENT 01</p><h1>A small world, one tick at a time.</h1><p class="intro" id="intro">Five scripted transitions. A test of the machinery, before autonomous rules.</p></div><span id="status" role="status">Connecting</span></header>
     <section class="toolbar" aria-label="Experiment controls">
-      <div class="tick">Tick <strong id="tick">—</strong><span> / 5</span></div>
+      <div class="tick">Tick <strong id="tick">—</strong><span> / <span id="end-tick">—</span></span></div>
       <div class="buttons"><button id="resume" disabled>Resume</button><button id="pause" disabled>Pause</button><button id="step" disabled>Single step</button></div>
-      <p id="control-message" aria-live="polite">Starts paused. Advance a tick to follow the script.</p>
+      <fieldset id="preset-controls" hidden>
+        <legend>Property preset for next restart</legend>
+        <p id="current-preset" class="hint"></p>
+        <div id="preset-options"></div>
+        <p id="next-preset" aria-live="polite"></p>
+        <p class="hint">Each preset replaces the four weight bundles and uses equal proportions. Crowding lowers the base Copy chance further. All other settings stay the same. These illustrative combinations do not guarantee coexistence.</p>
+        <details><summary>Next restart weights</summary><p class="hint">Wait / Move / Copy / Repair</p><p id="preset-weights" class="hint"></p></details>
+      </fieldset>
+      <div id="restart-controls" hidden><label for="seed">Seed</label><input id="seed" type="text" inputmode="numeric" value="1" aria-describedby="control-message" disabled><div class="buttons"><button id="restart-seed" disabled>Restart with seed</button><button id="restart-random" disabled>Restart with random seed</button></div></div>
+      <p id="control-message" aria-live="polite">Starts paused. Advance a tick to inspect individual decisions.</p>
       <p id="run-message" aria-live="polite"></p>
     </section>
     <p id="connection" role="alert" hidden></p>
     <div class="workspace">
-      <section class="world"><div class="section-heading"><h2>World</h2><span>5 × 5 · wraparound edges</span></div>
+      <section class="world"><div class="section-heading"><h2>World</h2><span id="dimensions">—</span></div>
         <canvas id="grid" width="600" height="600" role="img" aria-label="World grid">The world is also available in the agent selector.</canvas>
-        <p class="hint">Click an occupied square to follow its agent. Coordinates start at zero.</p>
+        <p class="hint">Click an occupied square to inspect and follow its agent.</p>
       </section>
-      <aside>
-        <section class="inspection"><div class="section-heading"><h2>Inspect an agent</h2><span>Read only</span></div>
+      <aside class="details">
+        <section id="experiment-settings" hidden><div class="section-heading"><h2>Property groups</h2><span id="action-order">Wait / move / copy / remove</span></div><div id="legend"></div><p id="choice-rule" class="hint" hidden>Copy chance is scaled by the fraction of empty neighbours; the rest goes to Wait. Move/Copy still choose among all eight. Group weights stay inherited.</p><p id="configuration" class="hint"></p></section><section class="inspection"><div class="section-heading"><h2>Inspect an agent</h2><span>Read only</span></div>
           <label for="agent">Agent</label><select id="agent"><option value="">Choose an agent</option></select>
           <p id="inspection" aria-live="polite">Select an occupied square or choose an agent above.</p>
         </section>
         <section class="measurements"><div class="section-heading"><h2>Measurements</h2><span>Accepted events</span></div>
-          <dl><div class="population"><dt>Agents now</dt><dd id="count">—</dd></div><div><dt>Moves</dt><dd id="moves">—</dd></div><div><dt>Creations</dt><dd id="creations">—</dd></div><div><dt>Removals</dt><dd id="removals">—</dd></div><div><dt>Value changes</dt><dd id="value_changes">—</dd></div></dl>
+          <dl><div class="population"><dt>Agents now</dt><dd id="count">—</dd></div><div><dt>Moves</dt><dd id="moves">—</dd></div><div><dt>Creations</dt><dd id="creations">—</dd></div><div><dt>Removals</dt><dd id="removals">—</dd></div><div><dt>Value changes</dt><dd id="value_changes">—</dd></div><div class="maintenance-measurement" hidden><dt>Repairs</dt><dd id="repairs">—</dd></div><div class="maintenance-measurement" hidden><dt>Failures</dt><dd id="failures">—</dd></div></dl>
         </section>
-        <section class="history"><div class="section-heading"><h2>Agent count over time</h2></div>
+        <section class="history"><div class="section-heading"><h2>Population over time</h2></div>
           <canvas id="plot" width="600" height="230" role="img" aria-label="Observed agent counts"></canvas>
-          <p id="samples">Waiting for the first sample.</p><p class="hint">Up to 128 observed points. Gaps stay unconnected; refresh starts a new observation history.</p>
+          <p id="samples">Waiting for the first sample.</p><p class="hint">Gaps stay unconnected; refreshing starts a new history.</p>
         </section>
+        <section id="failure-evidence" hidden><div class="section-heading"><h2>Failure evidence</h2></div><p id="failure-summary" class="hint"></p><details><summary>Recent failure records</summary><ol id="failure-list"></ol></details></section>
       </aside>
     </div>
     <footer>The Rust process owns this experiment. Refresh or close this page and reconnect at any time. Stop the server with Ctrl+C in its terminal.</footer>

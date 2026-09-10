@@ -3,7 +3,7 @@ name = "virtual-life"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
-description = "A scripted synchronous grid demonstrator for VirtualLife"
+description = "A reproducible synchronous population experiment for VirtualLife"
 license-file = "LICENSE"
 default-run = "headless"
 
