@@ -24,7 +24,7 @@
         <p class="hint">Click an occupied square to follow its agent. Coordinates start at zero.</p>
       </section>
       <aside>
-        <section id="experiment-settings" hidden><div class="section-heading"><h2>Property groups</h2><span id="action-order">Wait / move / copy / remove</span></div><div id="legend"></div><p id="configuration" class="hint"></p></section><section class="inspection"><div class="section-heading"><h2>Inspect an agent</h2><span>Read only</span></div>
+        <section id="experiment-settings" hidden><div class="section-heading"><h2>Property groups</h2><span id="action-order">Wait / move / copy / remove</span></div><div id="legend"></div><p id="choice-rule" class="hint" hidden>Copy chance is scaled by the fraction of empty neighbours; the rest goes to Wait. Move/Copy still choose among all eight. Group weights stay inherited.</p><p id="configuration" class="hint"></p></section><section class="inspection"><div class="section-heading"><h2>Inspect an agent</h2><span>Read only</span></div>
           <label for="agent">Agent</label><select id="agent"><option value="">Choose an agent</option></select>
           <p id="inspection" aria-live="polite">Select an occupied square or choose an agent above.</p>
         </section>

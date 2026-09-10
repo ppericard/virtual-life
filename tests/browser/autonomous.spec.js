@@ -14,8 +14,11 @@ test.describe('wear and repair default experiment', () => {
     await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
     await expect(page.locator('#action-order')).toHaveText('Wait / move / copy / repair');
     await expect(page.locator('#configuration')).toContainText('Maximum, initial and newborn integrity 10');
+    await expect(page.locator('#configuration')).toContainText('wear-repair crowding v2');
+    await expect(page.locator('#choice-rule')).toContainText('Copy chance is scaled by the fraction of empty neighbours');
     let previous=await snapshot(page,server);
     expect(previous.experiment.survival).toBe('wear-repair');
+    expect(previous.experiment.protocol).toBe('wear-repair crowding v2');
     expect(previous.experiment.groups.map(g=>g.weights)).toEqual([[2,4,1,3],[2,2,2,4],[4,1,1,4],[1,5,2,2]]);
     const selected=previous.cells.find(Boolean); await page.locator('#agent').selectOption(selected.id);
     await expect(page.locator('#inspection')).toContainText('Integrity 10/10');
@@ -34,6 +37,11 @@ test.describe('wear and repair default experiment', () => {
       previous=current;
     }
     expect(recovered).toBe(true); expect(Number(previous.totals.repairs)).toBeGreaterThan(0);
+    expect(previous.experiment.groups.map(g=>g.count)).toEqual(['4','10','6','1']);
+    await page.locator('#agent').selectOption('23');
+    await expect(page.locator('#inspection')).toHaveText('ID 23 · Group A · Base weights (wait, move, copy, repair): 2, 4, 1, 3 · Position (3, 0) · Integrity 7/10');
+    await expect(page.locator('#plot')).toHaveAttribute('aria-label',/Tick 10: Group A 4, Group B 10, Group C 6, Group D 1; total 21/);
+    await save(page,info,'wear-crowding-v2-tick10');
     await page.getByRole('button',{name:'Resume',exact:true}).click(); await expect(page.getByRole('status')).toHaveText('completed');
     const final=await snapshot(page,server);
     expect(final.experiment.groups.reduce((n,g)=>n+Number(g.count),0)).toBe(Number(final.count));
@@ -101,6 +109,8 @@ test.describe('autonomous visual experiment', () => {
     await expect(page.locator('#end-tick')).toHaveText('80');
     await expect(page.locator('#dimensions')).toContainText('8 × 6');
     await expect(page.locator('#configuration')).toContainText('Seed 1 · SplitMix64 / VirtualLife sampling v1');
+    await expect(page.locator('#configuration')).toContainText('random v1');
+    await expect(page.locator('#choice-rule')).toBeHidden();
     await expect(page.locator('#legend .group-row')).toHaveCount(4);
     const initial = await snapshot(page,server);
     expect(initial.count).toBe('14');

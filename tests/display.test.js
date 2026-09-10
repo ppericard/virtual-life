@@ -5,6 +5,7 @@ import { HISTORY_LIMIT, recordSample, sampleDescription, inspectionText, groupCo
 test('inspection reports integrity and engine failure evidence without inventing a cause', () => {
   const sample={width:3,tick:'4',experiment:{maintenance:{maximum:10}},cells:[{id:'1',group:0,weights:[2,4,1,3],integrity:6}],failure_history:{discarded:'0',records:[]}};
   assert.match(inspectionText(sample,'1'),/copy, repair.*Integrity 6\/10/);
+  assert.match(inspectionText(sample,'1'),/Base weights \(wait, move, copy, repair\): 2, 4, 1, 3/);
   sample.cells=[null];
   assert.match(inspectionText(sample,'1'),/No failure record available/);
   sample.failure_history.records=[{id:'1',tick:'3',position:{x:1,y:2},reason:'move wear',integrity_before:2,upkeep:1,action_wear:1}];

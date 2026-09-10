@@ -25,7 +25,7 @@ export function inspectionText(sample, selected) {
     return `Agent ${selected} was removed by tick ${sample.tick}.`;
   }
   const agent = sample.cells[index];
-  const properties = sample.experiment ? `Group ${groupLabel(agent.group)} · Weights (wait, move, copy, ${sample.experiment.maintenance ? 'repair' : 'remove'}): ${agent.weights.join(', ')}` : `Value ${agent.value}`;
+  const properties = sample.experiment ? `Group ${groupLabel(agent.group)} · ${sample.experiment.maintenance ? 'Base weights' : 'Weights'} (wait, move, copy, ${sample.experiment.maintenance ? 'repair' : 'remove'}): ${agent.weights.join(', ')}` : `Value ${agent.value}`;
   const integrity = sample.experiment?.maintenance ? ` · Integrity ${agent.integrity}/${sample.experiment.maintenance.maximum}` : '';
   return `ID ${agent.id} · ${properties} · Position (${index % sample.width}, ${Math.floor(index / sample.width)})${integrity}`;
 }
@@ -42,6 +42,7 @@ export function renderExperiment(sample) {
   document.getElementById('intro').textContent = sample.experiment ? 'An autonomous experiment. Shared properties, individual choices, synchronous ticks.' : 'Five scripted transitions. A test of the machinery, before autonomous rules.';
   const legend = document.getElementById('legend'); legend.replaceChildren();
   document.getElementById('experiment-settings').hidden = !sample.experiment;
+  document.getElementById('choice-rule').hidden = !sample.experiment?.maintenance;
   document.getElementById('failure-evidence').hidden = !sample.experiment?.maintenance;
   for (const element of document.querySelectorAll('.maintenance-measurement')) element.hidden = !sample.experiment?.maintenance;
   if (!sample.experiment) return;
