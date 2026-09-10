@@ -12,6 +12,11 @@ function controls() {
   byId('resume').disabled = !ready || sample.status !== 'paused';
   for (const id of ['seed', 'restart-seed', 'restart-random']) byId(id).disabled = !ready || !sample.experiment;
 }
+function paintCanvases() {
+  if (!sample) return;
+  drawGrid(byId('grid'), sample, selected);
+  drawPlot(byId('plot'), history);
+}
 function render() {
   renderReadouts(sample, selected);
   renderExperiment(sample);
@@ -22,8 +27,7 @@ function render() {
   if (sample.experiment?.maintenance) for (const failure of sample.failure_history.records) selector.add(new Option(`ID ${failure.id} · failed: ${failure.reason}`, failure.id));
   if (selected && ![...selector.options].some(option => option.value === selected)) selector.add(new Option(`ID ${selected} · removed`, selected));
   selector.value = selected;
-  drawGrid(byId('grid'), sample, selected);
-  drawPlot(byId('plot'), history);
+  paintCanvases();
   byId('samples').textContent = sampleDescription(history);
   controls();
 }
@@ -151,4 +155,19 @@ byId('grid').addEventListener('click', event => {
   selected = sample.cells[index]?.id || '';
   render();
 });
+// Resize only repaints retained data, including while paused or disconnected.
+let paintFrame = 0;
+function schedulePaint() {
+  if (paintFrame) return;
+  paintFrame = requestAnimationFrame(() => { paintFrame = 0; paintCanvases(); });
+}
+const canvasResize = new ResizeObserver(schedulePaint);
+for (const id of ['grid', 'plot']) canvasResize.observe(byId(id));
+function watchPixelRatio() {
+  matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener('change', () => {
+    schedulePaint();
+    watchPixelRatio();
+  }, { once: true });
+}
+watchPixelRatio();
 poll();

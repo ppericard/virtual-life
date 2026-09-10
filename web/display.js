@@ -91,10 +91,24 @@ export function gridPosition(canvas, event, sample) {
   return x >= 0 && y >= 0 && x < sample.width && y < sample.height ? y * sample.width + x : -1;
 }
 
-export function drawGrid(canvas, sample, selected) {
+// Keep drawing and hit testing in logical coordinates; CSS owns the displayed size.
+function prepareCanvas(canvas, width, height) {
+  const box = canvas.getBoundingClientRect(), ratio = window.devicePixelRatio || 1;
+  const pixelsWide = Math.max(1, Math.round(box.width * ratio));
+  const pixelsHigh = Math.max(1, Math.round(box.height * ratio));
+  if (canvas.width !== pixelsWide) canvas.width = pixelsWide;
+  if (canvas.height !== pixelsHigh) canvas.height = pixelsHigh;
   const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, 600, 600);
+  ctx.setTransform(canvas.width / width, 0, 0, canvas.height / height, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  return ctx;
+}
+
+export function drawGrid(canvas, sample, selected) {
+  const ctx = prepareCanvas(canvas, 600, 600);
   const w = 540 / sample.width, h = 540 / sample.height;
+  const box = canvas.getBoundingClientRect();
+  const showLetters = Math.min(w * box.width / 600, h * box.height / 600) >= 14;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '16px system-ui'; ctx.fillStyle = '#536662';
   for (let x = 0; x < sample.width; x += Math.max(1, Math.ceil(24 / w))) ctx.fillText(String(x), 40 + (x + .5) * w, 22);
   for (let y = 0; y < sample.height; y += Math.max(1, Math.ceil(24 / h))) ctx.fillText(String(y), 20, 40 + (y + .5) * h);
@@ -105,7 +119,7 @@ export function drawGrid(canvas, sample, selected) {
     ctx.fillRect(x + gap, y + gap, w - gap * 2, h - gap * 2);
     if (agent) {
       ctx.fillStyle = sample.experiment ? groupInk(agent.group) : '#203333'; ctx.font = `${sample.experiment ? Math.min(18, Math.min(w, h) * .65) : 22}px system-ui`;
-      if (!sample.experiment || Math.min(w, h) >= 14) ctx.fillText(sample.experiment ? groupLabel(agent.group) : agent.id, x + w / 2, y + h / 2, Math.max(1, w - gap * 2));
+      if (!sample.experiment || showLetters) ctx.fillText(sample.experiment ? groupLabel(agent.group) : agent.id, x + w / 2, y + h / 2, Math.max(1, w - gap * 2));
       if (agent.id === selected) { ctx.strokeStyle = '#203333'; ctx.lineWidth = Math.min(4, w / 8); ctx.strokeRect(x + gap, y + gap, w - gap * 2, h - gap * 2); }
     }
   });
@@ -113,9 +127,8 @@ export function drawGrid(canvas, sample, selected) {
 }
 
 export function drawPlot(canvas, history) {
-  if (history[0]?.groups) { drawGroupPlot(canvas, history); return; }
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, 600, 230);
+  const ctx = prepareCanvas(canvas, 600, 230);
+  if (history[0]?.groups) { drawGroupPlot(canvas, ctx, history); return; }
   if (!history.length) return;
   const first = BigInt(history[0].tick), last = BigInt(history.at(-1).tick);
   const range = last - first || 1n;
@@ -141,8 +154,7 @@ export function drawPlot(canvas, history) {
   canvas.setAttribute('aria-label', history.map(p => `Tick ${p.tick}: ${p.count} agents`).join('; '));
 }
 
-function drawGroupPlot(canvas, history) {
-  const ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, 600, 230);
+function drawGroupPlot(canvas, ctx, history) {
   const first = BigInt(history[0].tick), last = BigInt(history.at(-1).tick), range = last - first || 1n;
   const top = Math.max(1, ...history.flatMap(point => point.groups.map(Number)));
   const x = point => 44 + Number((BigInt(point.tick) - first) * 1_000_000n / range) / 1_000_000 * 485;

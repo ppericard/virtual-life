@@ -142,7 +142,7 @@ test.describe('autonomous visual experiment', () => {
     expect(initial.experiment.groups.map(g=>g.initial_count)).toEqual(['4','4','3','3']);
     const pixels = await page.locator('#grid').evaluate(canvas => {
       const ctx=canvas.getContext('2d');
-      return Array.from({length:48},(_,i)=>'#'+[...ctx.getImageData(40+i%8*67.5+5,40+Math.floor(i/8)*90+5,1,1).data].slice(0,3).map(n=>n.toString(16).padStart(2,'0')).join(''));
+      return Array.from({length:48},(_,i)=>'#'+[...ctx.getImageData((40+i%8*67.5+5)*canvas.width/600,(40+Math.floor(i/8)*90+5)*canvas.height/600,1,1).data].slice(0,3).map(n=>n.toString(16).padStart(2,'0')).join(''));
     });
     expect(pixels).toEqual(initial.cells.map(agent=>agent?colors[agent.group]:'#f5f7f2'));
     const index=initial.cells.findIndex(Boolean), agent=initial.cells[index];

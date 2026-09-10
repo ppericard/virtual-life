@@ -22,7 +22,9 @@ async function checkState(page, server, tick) {
   const pixels = await page.locator('#grid').evaluate(canvas => {
     const ctx = canvas.getContext('2d');
     return Array.from({length: 25}, (_, i) => {
-      const pixel = ctx.getImageData(40 + i % 5 * 108 + 18, 40 + Math.floor(i / 5) * 108 + 18, 1, 1).data;
+      const x = (40 + i % 5 * 108 + 18) * canvas.width / 600;
+      const y = (40 + Math.floor(i / 5) * 108 + 18) * canvas.height / 600;
+      const pixel = ctx.getImageData(x, y, 1, 1).data;
       return '#' + [...pixel].slice(0, 3).map(n => n.toString(16).padStart(2,'0')).join('');
     });
   });
@@ -85,7 +87,7 @@ test.describe('pacing and gaps', () => {
     expect(ticks).toContain(Number(paused));
     // No invented line across the initial gap: center of 0→2 at count 3 is blank.
     if (ticks[0]===0 && ticks[1]===2) {
-      const pixel = await page.locator('#plot').evaluate(canvas => [...canvas.getContext('2d').getImageData(148,39,1,1).data]);
+      const pixel = await page.locator('#plot').evaluate(canvas => [...canvas.getContext('2d').getImageData(148*canvas.width/600,39*canvas.height/230,1,1).data]);
       expect(pixel[3]).toBe(0);
     }
     await screenshot(page,info,'sampled-gaps');
