@@ -47,7 +47,13 @@ fn run() -> Result<(), String> {
                 index % world.width(),
                 index / world.width()
             );
-            if info.is_some() {
+            if let Some(machine) = agent.automaton {
+                print!(
+                    " automaton={} state={}",
+                    machine.specification(),
+                    agent.last_action.unwrap_or(machine.initial).label()
+                );
+            } else if info.is_some() {
                 print!(" weights={:?}", agent.weights.0);
             }
             if let Some(rules) = world.maintenance() {

@@ -22,14 +22,14 @@
       </section>
       <aside id="inspection-panel" class="inspection" aria-labelledby="inspection-title" hidden>
         <div class="section-heading"><h2 id="inspection-title">Inspect an agent</h2><button data-close="inspection" aria-label="Close inspection">Close</button></div>
-        <p class="hint">Read only · Click an occupied square or choose an agent.</p><label for="agent">Agent</label><select id="agent"><option value="">Choose an agent</option></select><p id="inspection" aria-live="polite">Select an occupied square or choose an agent above.</p>
+        <p class="hint">Read only · Click an occupied square or choose an agent.</p><label for="agent">Agent</label><select id="agent"><option value="">Choose an agent</option></select><div id="agent-automaton" hidden></div><p id="inspection" aria-live="polite">Select an occupied square or choose an agent above.</p>
       </aside>
     </div>
     <section id="new-experiment-panel" class="secondary-panel" aria-labelledby="new-experiment-title" tabindex="-1" hidden>
       <div class="section-heading"><h2 id="new-experiment-title">New experiment</h2><button data-close="new-experiment" aria-label="Close New experiment">Close</button></div>
       <div class="panel-body">
         <p class="hint">Choose settings for the next restart. Either Restart button replaces the current run; opening or closing this panel leaves it unchanged.</p>
-        <fieldset id="preset-controls" hidden><legend>Property preset for next restart</legend><p id="current-preset" class="hint"></p><div id="preset-options"></div><p id="next-preset" aria-live="polite"></p><p class="hint">Each preset replaces the four weight bundles and uses equal proportions. Crowding lowers the base Copy chance further. All other settings stay the same. These illustrative combinations do not guarantee coexistence.</p><details><summary>Next restart weights</summary><p class="hint">Wait / Move / Copy / Repair</p><p id="preset-weights" class="hint"></p></details></fieldset>
+        <fieldset id="preset-controls" hidden><legend>Property preset for next restart</legend><p id="current-preset" class="hint"></p><div id="preset-options"></div><p id="next-preset" aria-live="polite"></p><p class="hint">Choose inherited action graphs or comparison weight bundles, with equal proportions. Crowding lowers the base Copy chance further. All other settings stay the same. These illustrative combinations do not guarantee coexistence.</p><details><summary>Next restart graphs and weights</summary><p class="hint">Wait / Move / Copy / Repair</p><p id="preset-weights" class="hint"></p><div id="preset-automata"></div></details></fieldset>
         <div id="restart-controls" hidden><label for="seed">Seed</label><input id="seed" type="text" inputmode="numeric" value="1" aria-describedby="control-message" disabled><div class="buttons"><button id="restart-seed" disabled>Restart with seed</button><button id="restart-random" disabled>Restart with random seed</button></div></div>
       </div>
     </section>

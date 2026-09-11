@@ -66,6 +66,7 @@ fn exact_tuple_identity_aggregates_proportions_and_preserves_zero_groups() {
         proportions: vec![1, 2, 3, 0],
         seed: 1,
         maintenance: None,
+        automata: None,
     };
     let (world, _, info) = config.initialize().unwrap();
     assert_eq!(info.groups.len(), 3); // Proportional, nonidentical tuples remain distinct.
@@ -374,6 +375,22 @@ fn fixed_tick_results_ignore_observation_rate_backpressure_and_disconnect() {
             }),
             ..ExperimentConfig::default()
         });
+        check_observation_independence(ExperimentConfig {
+            automata: Some(
+                virtual_life::automaton::PRESETS
+                    .iter()
+                    .map(|p| p.machine)
+                    .collect(),
+            ),
+            maintenance: Some(virtual_life::engine::Maintenance {
+                upkeep: 0,
+                crowding_upkeep: 0,
+                move_wear: 0,
+                copy_wear: 0,
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
         let _ = finished.send(());
     });
     completion
@@ -428,6 +445,7 @@ fn wear_crowding_v2_seed_one_records_exact_tick_ten_world_and_failures() {
             id,
             value: 0,
             weights: config.bundles[group],
+            automaton: None,
             integrity,
             // Selected proposals captured from the unchanged #9 baseline.
             last_action: match id {
@@ -526,6 +544,7 @@ fn wear_crowding_v3_seed_one_records_exact_tick_ten_world_and_failure_costs() {
             id,
             value: 0,
             weights: config.bundles[group],
+            automaton: None,
             integrity,
             // Selected proposals captured from the unchanged #9 baseline.
             last_action: match id {

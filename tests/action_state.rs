@@ -40,9 +40,13 @@ fn every_state_uses_the_same_exact_property_and_starting_neighbour_tickets() {
             for integrity_after_upkeep in [1, 7, u32::MAX] {
                 assert_eq!(
                     transition_weights(
-                        state,
-                        Weights(weights),
+                        Agent {
+                            weights: Weights(weights),
+                            last_action: state,
+                            ..Agent::default()
+                        },
                         integrity_after_upkeep,
+                        u32::MAX,
                         &neighbours
                     ),
                     expected

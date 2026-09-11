@@ -1,6 +1,50 @@
 # VirtualLife — model and examples
 
-**Model status:** the approved autonomous default is wear and repair with Copy reduced by local crowding. Four inherited property bundles and starting neighbour occupancy drive individual choices; survival follows integrity and operating history. The earlier random-removal Option A and scripted fixture remain available for comparison and regression coverage. None is evidence of biological realism or emergence. See [README](README.md) for the overview and [the development reference](docs/development.md#verification) for usage and checks.
+**Model status:** autonomous wear-repair supports inherited probabilistic unit-action automata with integrity and crowding responses. Flat weight bundles remain the compatibility launch default; use `--automaton-preset mixed` for the four new graphs. Survival follows integrity and operating history. The earlier random-removal Option A and scripted fixture remain available for comparison and regression coverage. None is evidence of biological realism or emergence. See [README](README.md) for the overview and [the development reference](docs/development.md#verification) for usage and checks.
+
+## Probabilistic unit-action automata
+
+**11 September 2026 — Pierre's decisions:** use Wait, Move, Copy and Repair as states, with inherited outgoing arrows that can differ by source state. Missing arrows and certain transitions are allowed. Recompute preferences each tick from the individual's properties and local environment. Repair must follow integrity smoothly, without a repair threshold. Types differ through inherited graphs and response parameters; no type-specific code or species hierarchy is introduced.
+
+Each graph holds an initial state, four rows of four nonnegative integer weights, a Copy damage gain and a Move crowding gain (both 0–255). Every inherited row must contain a positive weight. Initial agents and newborns use the inherited initial state's row but have not yet acted. Thereafter the last selected action selects the row, including rejected Move/Copy attempts. One draw chooses the next state and its unit action in the same tick. Offspring inherit the whole graph and response parameters, receive fresh maximum integrity and no selected action, and first act next tick. Exact inherited graphs, initial state and response parameters define groups; current integrity and action state do not.
+
+After the unchanged mandatory upkeep check, let `d` be missing integrity as a fraction of maximum, `n` occupied neighbours out of eight, and `(W,M,C,R)` the current inherited row. The conceptual weights are:
+
+| Next action | Adjusted relative weight |
+|---|---|
+| Wait | `W + (n/8) × C × (1 + copy_gain × d)` |
+| Move | `M × (1 + move_gain × n/8)` |
+| Copy | `C × (1 + copy_gain × d) × (1 − n/8)` |
+| Repair | `R × d` |
+
+Normalize these four values to obtain probabilities. Repair weight is zero at full integrity and grows with damage on **every** incoming arrow, including its self-loop. A row containing only Repair still selects Repair with certainty when damaged: normalization matters. Strong Copy responses can compete with Repair as integrity falls, so larger Repair weight does not by itself guarantee a larger final probability against every competing response. The engine still permits costly attempts that can fail; these rules do not make agents optimally cautious.
+
+Implementation uses integer tickets: `D = ceil(1000 × (maximum − integrity_after_upkeep) / maximum)`. This is a smooth response sampled to 1000 parts, with upward error below 0.001 and any positive damage retained. Set `C' = C × (1000 + copy_gain × D)`; tickets are `(8000W + nC', 1000M(8 + move_gain×n), (8−n)C', 8RD)`. Their total is below `2^54` even at maximal supported parameters. Draw once below the total. If all effective weights are zero, use Wait with certainty and store Wait as the selected state. Crowding's existing Copy-to-Wait transfer and this no-choice fallback can produce Wait even without an inherited Wait arrow; the live diagram includes these conditional arrows.
+
+Example: from Repair, row `(0,3,1,6)`, no response gains and empty surroundings. At integrity 8/10 **after upkeep**, tickets are `(0,24000,8000,9600)`: Move ≈57.7%, Copy ≈19.2%, Repair ≈23.1%. At 5/10 they become `(0,24000,8000,24000)`: Move ≈42.9%, Copy ≈14.3%, Repair ≈42.9%. At full integrity Repair is zero. No threshold switches it on.
+
+```mermaid
+flowchart LR
+    S[Current action state] --> Row[Inherited outgoing arrows]
+    I[Integrity after upkeep] --> Adjust[Adjust four weights]
+    N[Eight starting neighbours] --> Adjust
+    Row --> Adjust --> Draw[One weighted draw]
+    Draw --> A[Next state and unit action]
+    A --> S
+```
+
+Illustrative presets, all initially in Wait:
+
+| Preset | Characteristic graph / response |
+|---|---|
+| Movement runs | Move can repeat; crowding gain 2 increases movement; Copy leads to Repair. |
+| Repair cycles | Wait, Move and Copy each lead only to Repair; Repair can lead to any state. |
+| Copy bursts | Copy can repeat; Copy damage gain 2 gives multiplier `1 + 2d`. |
+| Wait cycles | Wait can repeat; Repair sometimes leads to Move or Copy; Move leads to Wait. |
+
+Exact rows are in `src/automaton.rs` and exposed in CLI metadata and browser diagrams. These are starting hypotheses, without a coexistence or survival guarantee. `unit-action automaton v1` identifies this sampling protocol. Flat bundles preserve the earlier v3 draw bounds and results exactly; the historical sections below describe those comparison rules.
+
+**Near-term model priority:** mutation during copying, so new inherited types can arise beyond the starting presets. Pierre explicitly wants this soon. It is not implemented here; mutation rate, size, allowable graph changes, and how to display growing diversity need a separate model decision. **Later exploration:** longer-lived behaviour modes (for example roaming and recovery) which can each perform multiple unit actions. The current implementation keeps unit actions as states.
 
 ## Confirmed starting constraints
 

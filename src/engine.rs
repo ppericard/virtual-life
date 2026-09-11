@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Behaviour-defining properties: wait/move/copy, then repair or random removal.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "web", derive(serde::Serialize))]
 pub struct Weights(pub [u32; 4]);
 
 impl Default for Weights {
@@ -24,7 +25,8 @@ impl Position {
 }
 
 /// Wear-repair memory of the last selected action, independent of its success.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "web", derive(serde::Serialize))]
 pub enum ActionState {
     Wait,
     Move,
@@ -33,6 +35,17 @@ pub enum ActionState {
 }
 
 impl ActionState {
+    pub const ALL: [Self; 4] = [Self::Wait, Self::Move, Self::Copy, Self::Repair];
+
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Wait => 0,
+            Self::Move => 1,
+            Self::Copy => 2,
+            Self::Repair => 3,
+        }
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             Self::Wait => "Wait",
@@ -48,6 +61,8 @@ pub struct Agent {
     pub id: u64,
     pub value: i64,
     pub weights: Weights,
+    /// None retains the original state-independent weighted policy.
+    pub automaton: Option<crate::automaton::Automaton>,
     pub integrity: u32,
     /// None before the first action, and unused by random-removal/demo worlds.
     pub last_action: Option<ActionState>,
@@ -128,7 +143,7 @@ pub fn upkeep_at(
     })
 }
 
-fn neighbor_positions(
+pub(crate) fn neighbor_positions(
     width: usize,
     height: usize,
     position: Position,
@@ -293,6 +308,9 @@ impl World {
         };
         let mut ids = HashSet::new();
         for &(position, agent) in agents {
+            if let Some(machine) = agent.automaton {
+                machine.validate()?;
+            }
             let index = world.index(position)?;
             if world.current[index].is_some() {
                 return Err("initial square is already occupied".into());
