@@ -66,11 +66,11 @@ test('keyboard and cell inspection, secondary panels and pending setup are read-
       await save(page,info,'desktop-analysis');
     }
     if(name==='Details') {
-      await expect(page.locator('#configuration')).toContainText('wear-repair crowding v3');
+      await expect(page.locator('#configuration')).toContainText('unit-action automaton v1');
       await expect(page.locator('#legend .group-row')).toHaveCount(4);
     }
     if(name==='New experiment') {
-      await page.getByRole('button',{name:'Lower copying',exact:true}).click();
+      await page.getByRole('button',{name:'Repair cycles',exact:true}).click();
       await page.locator('#seed').fill('42');
       await save(page,info,'desktop-new-experiment');
     }
@@ -79,8 +79,8 @@ test('keyboard and cell inspection, secondary panels and pending setup are read-
   }
   await openPanel(page,'New experiment');
   await expect(page.locator('#seed')).toHaveValue('42');
-  await expect(page.locator('#next-preset')).toContainText('Lower copying');
-  await expect(page.locator('#current-preset')).toContainText('Original');
+  await expect(page.locator('#next-preset')).toContainText('Repair cycles');
+  await expect(page.locator('#current-preset')).toContainText('Mixed automata');
   await page.keyboard.press('Escape');
   await expect(page.locator('#new-experiment-toggle')).toBeFocused();
   await expect(page.locator('#new-experiment-panel')).toBeHidden();
@@ -113,7 +113,7 @@ test('narrow panel switches and desktop resizing keep requested controls reachab
     const panel = page.locator(`#${await page.getByRole('button',{name,exact:true}).getAttribute('aria-controls')}`);
     await expect(panel).toBeFocused();
     if (name === 'New experiment') {
-      await page.getByRole('button',{name:'Lower copying',exact:true}).click();
+      await page.getByRole('button',{name:'Repair cycles',exact:true}).click();
       await page.locator('#seed').fill('42');
       // A trial click runs the real actionability/hit test without restarting.
       await page.locator('#restart-seed').click({trial:true,timeout:2000});
@@ -150,7 +150,7 @@ test('narrow panel switches and desktop resizing keep requested controls reachab
   await expect(page.locator('#new-experiment-toggle')).toBeFocused();
   await openPanel(page,'New experiment');
   await expect(page.locator('#seed')).toHaveValue('42');
-  await expect(page.locator('#next-preset')).toContainText('Lower copying');
+  await expect(page.locator('#next-preset')).toContainText('Repair cycles');
   await expect(page.locator('#agent')).toHaveValue(selected);
   await expect(page.locator('#samples')).toHaveText(history);
   expect(posts).toBe(0);
@@ -166,9 +166,9 @@ for (const width of [1280,390]) {
     let posts = 0; page.on('request', request => { if (request.method() === 'POST') posts++; });
     // Cover a retained input, a preset removed during run reconciliation, the
     // disappearing trigger, and unrelated focus that must not be stolen.
-    for (const focused of ['#seed','[data-preset="lower-copying"]','#new-experiment-toggle','#details-toggle']) {
+    for (const focused of ['#seed','[data-preset="repair-cycles"]','#new-experiment-toggle','#details-toggle']) {
       await openPanel(page,'New experiment');
-      await page.getByRole('button',{name:'Lower copying',exact:true}).click();
+      await page.getByRole('button',{name:'Repair cycles',exact:true}).click();
       await page.locator('#seed').fill('42');
       await page.locator(focused).focus();
       const previousRun = (await page.request.get(`${server.url}/api/snapshot`)).headers()['x-virtuallife-run'];
@@ -200,7 +200,7 @@ for (const width of [1280,390]) {
       await expect(focus).toBeFocused();
       await openPanel(page,'New experiment');
       await expect(page.locator('#seed')).toHaveValue('1');
-      await expect(page.locator('#next-preset')).toContainText('Original');
+      await expect(page.locator('#next-preset')).toContainText('Mixed automata');
       await page.locator('#restart-seed').click({trial:true});
       await page.locator('#restart-random').click({trial:true});
       await page.getByRole('button',{name:'Close New experiment',exact:true}).click();
@@ -212,7 +212,7 @@ for (const width of [1280,390]) {
 }
 
 test.describe('hidden observation with eight property groups',()=>{
-  test.use({serverArgs:['--mode','autonomous','--width','5','--height','5','--occupancy','1','--bundles','1,0,0,0;2,0,0,0;3,0,0,0;4,0,0,0;5,0,0,0;6,0,0,0;7,0,0,0;8,0,0,0','--proportions','1,1,1,1,1,1,1,0','--upkeep','0','--crowding-upkeep','0','--ticks','136','--tick-ms','0']});
+  test.use({serverArgs:['--mode','autonomous','--width','5','--height','5','--occupancy','1','--automata', 'wait:1,0,0,0/1,0,0,0/1,0,0,0/1,0,0,0;wait:2,0,0,0/2,0,0,0/2,0,0,0/2,0,0,0;wait:3,0,0,0/3,0,0,0/3,0,0,0/3,0,0,0;wait:4,0,0,0/4,0,0,0/4,0,0,0/4,0,0,0;wait:5,0,0,0/5,0,0,0/5,0,0,0/5,0,0,0;wait:6,0,0,0/6,0,0,0/6,0,0,0/6,0,0,0;wait:7,0,0,0/7,0,0,0/7,0,0,0/7,0,0,0;wait:8,0,0,0/8,0,0,0/8,0,0,0/8,0,0,0','--proportions','1,1,1,1,1,1,1,0','--upkeep','0','--crowding-upkeep','0','--ticks','136','--tick-ms','0']});
   test('closed analysis retains bounded history and reopens while paused or offline',async({page,context,server},info)=>{
     test.setTimeout(60000);
     await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');

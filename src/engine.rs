@@ -1,7 +1,7 @@
 //! The transition rules in MODEL.md. No clocks, threads, or observation here.
 use std::collections::{HashMap, HashSet, VecDeque};
 
-/// Behaviour-defining properties: wait/move/copy, then repair or random removal.
+/// One automaton row: relative weights toward Wait, Move, Copy and Repair.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "web", derive(serde::Serialize))]
 pub struct Weights(pub [u32; 4]);
@@ -60,11 +60,9 @@ impl ActionState {
 pub struct Agent {
     pub id: u64,
     pub value: i64,
-    pub weights: Weights,
-    /// None retains the original state-independent weighted policy.
-    pub automaton: Option<crate::automaton::Automaton>,
+    pub automaton: crate::automaton::Automaton,
     pub integrity: u32,
-    /// None before the first action, and unused by random-removal/demo worlds.
+    /// None before the first action, and unused by scripted demo worlds.
     pub last_action: Option<ActionState>,
 }
 
@@ -308,9 +306,7 @@ impl World {
         };
         let mut ids = HashSet::new();
         for &(position, agent) in agents {
-            if let Some(machine) = agent.automaton {
-                machine.validate()?;
-            }
+            agent.automaton.validate()?;
             let index = world.index(position)?;
             if world.current[index].is_some() {
                 return Err("initial square is already occupied".into());

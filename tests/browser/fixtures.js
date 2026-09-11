@@ -30,7 +30,7 @@ async function spawnServer(file, args, onOutput) {
 }
 
 export const test = base.extend({
-  serverArgs: [[], { option: true }],
+  serverArgs: [['--mode', 'demo'], { option: true }],
   server: async ({ serverArgs }, use, testInfo) => {
     let logs = '';
     async function start(port, args = serverArgs) {

@@ -42,10 +42,10 @@ test('graphs show actual probabilities, preserve observation and replay through 
   await page.getByRole('button',{name:'Copy bursts',exact:true}).click();
   await page.locator('#restart-seed').click(); await expect(page.locator('#tick')).toHaveText('0');
   expect((await snapshot(page,server)).experiment.groups).toHaveLength(1);
-  await page.getByRole('button',{name:'Original',exact:true}).click();
+  await page.getByRole('button',{name:'Mixed automata',exact:true}).click();
   await page.locator('#restart-seed').click();
-  await expect(page.locator('#current-preset')).toHaveText('Current run: Original.');
-  expect((await snapshot(page,server)).experiment.protocol).toBe('wear-repair crowding v3');
+  await expect(page.locator('#current-preset')).toHaveText('Current run: Mixed automata.');
+  expect((await snapshot(page,server)).experiment.protocol).toBe('unit-action automaton v1');
 });
 
 test.describe('healthy repair-only row',()=> {

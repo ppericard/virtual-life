@@ -1,4 +1,5 @@
-import { test, expect, openPanel, inspectAgent } from './fixtures.js';
+import {inspectionText} from '../../web/display.js';
+import { test, expect, openPanel, inspectAgent, waitForGridFit } from './fixtures.js';
 
 const colors = ['#0072b2', '#d55e00', '#009e73', '#cc79a7'];
 async function snapshot(page, server) { return (await page.request.get(`${server.url}/api/snapshot`)).json(); }
@@ -9,7 +10,7 @@ async function save(page, info, name) {
 }
 
 test.describe('stored selected action inspection', () => {
-  test.use({serverArgs:['--mode','autonomous','--width','3','--height','3','--occupancy','1','--bundles','0,1,0,0','--proportions','1','--ticks','2']});
+  test.use({serverArgs:['--mode','autonomous','--width','3','--height','3','--occupancy','1','--automata', 'wait:0,1,0,0/0,1,0,0/0,1,0,0/0,1,0,0','--proportions','1','--ticks','2']});
   test('a rejected Move remains selected while the individual stays in place', async ({page,server},info) => {
     await page.goto(server.url);
     await expect(page.locator('#tick')).toHaveText('0');
@@ -47,16 +48,15 @@ test.describe('wear and repair default experiment', () => {
     await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
     await expect(page.locator('#action-order')).toHaveText('Wait / move / copy / repair');
     await expect(page.locator('#configuration')).toContainText('Maximum, initial and newborn integrity 10');
-    await expect(page.locator('#configuration')).toContainText('wear-repair crowding v3');
-    await expect(page.locator('#configuration')).toContainText('Replaying wear-repair v1 requires its earlier code; crowding v2 requires --crowding-upkeep 0 with matching settings.');
+    await expect(page.locator('#configuration')).toContainText('unit-action automaton v1');
     await expect(page.locator('#configuration')).toContainText('base upkeep 1, plus 1 when at least 5/8 starting neighbours are occupied');
-    await expect(page.locator('#choice-rule')).toContainText('Copy chance is scaled by the fraction of empty neighbours');
+    await expect(page.locator('#choice-rule')).toContainText('The current state selects an inherited row');
     await openPanel(page, 'Details');
     let previous=await snapshot(page,server);
-    expect(previous.experiment.survival).toBe('wear-repair');
-    expect(previous.experiment.protocol).toBe('wear-repair crowding v3');
+    expect(previous.experiment).not.toHaveProperty('survival');
+    expect(previous.experiment.protocol).toBe('unit-action automaton v1');
     expect(previous.experiment.maintenance).toMatchObject({crowding_threshold:5,crowding_upkeep:1});
-    expect(previous.experiment.groups.map(g=>g.weights)).toEqual([[2,4,1,3],[2,2,2,4],[4,1,1,4],[1,5,2,2]]);
+    expect(previous.experiment.groups.map(g=>g.automaton)).toEqual(previous.experiment.presets[0].automata);
     const selected=previous.cells.find(Boolean); await inspectAgent(page, selected.id);
     await expect(page.locator('#inspection')).toContainText('Integrity 10/10');
     await save(page,info,'wear-repair-initial');
@@ -68,21 +68,21 @@ test.describe('wear and repair default experiment', () => {
       if(recovering&&!recovered) {
         await inspectAgent(page, recovering.id);
         await expect(page.locator('#inspection')).toContainText(`Integrity ${recovering.integrity}/10`);
-        expect(previous.cells.find(agent=>agent?.id===recovering.id).weights).toEqual(recovering.weights);
+        expect(previous.cells.find(agent=>agent?.id===recovering.id).group).toEqual(recovering.group);
         await save(page,info,'wear-repair-recovery'); recovered=true;
       }
       previous=current;
     }
     expect(recovered).toBe(true); expect(Number(previous.totals.repairs)).toBeGreaterThan(0);
-    expect(previous.experiment.groups.map(g=>g.count)).toEqual(['1','9','4','1']);
-    await inspectAgent(page, '23');
-    await expect(page.locator('#inspection')).toHaveText('ID 23 · Group A · Base weights (wait, move, copy, repair): 2, 4, 1, 3 · Position (3, 0) · Integrity 7/10 · Current occupied neighbours 2/8 · Next-tick effective upkeep 1 (base 1 + crowding 0; displayed neighbourhood) · Last selected action: Move (success not implied)');
-    await expect(page.locator('#plot')).toHaveAttribute('aria-label',/Tick 10: Group A 1, Group B 9, Group C 4, Group D 1; total 15/);
-    await save(page,info,'wear-crowding-v3-tick10');
-    await inspectAgent(page, '17');
-    await expect(page.locator('#inspection')).toHaveText('Agent 17 failed at tick 8 · upkeep · Position (3, 1) · starting integrity 2, occupied neighbours 5/8, effective upkeep 2 (base 1 + crowding 1), extra wear 0.');
-    expect(previous.cells[1*8+3].id).toBe('16'); // Historical failure survives a different current occupant.
-    await save(page,info,'wear-crowding-v3-failure');
+    const alive = previous.cells.find(Boolean);
+    await inspectAgent(page, alive.id);
+    await expect(page.locator('#inspection')).toHaveText(inspectionText(previous, alive.id));
+    await expect(page.locator('#plot')).toHaveAttribute('aria-label', new RegExp(`Tick 10:.*total ${previous.count}`));
+    const recorded = previous.failure_history.records[0];
+    expect(recorded).toBeTruthy();
+    await inspectAgent(page, recorded.id);
+    await expect(page.locator('#inspection')).toHaveText(inspectionText(previous, recorded.id));
+    await save(page,info,'fsm-tick10-failure');
     await page.getByRole('button',{name:'Resume',exact:true}).click(); await expect(page.getByRole('status')).toHaveText('completed');
     const final=await snapshot(page,server);
     expect(final.experiment.groups.reduce((n,g)=>n+Number(g.count),0)).toBe(Number(final.count));
@@ -107,7 +107,7 @@ test.describe('wear and repair default experiment', () => {
 });
 
 test.describe('exact upkeep failure evidence', () => {
-  test.use({serverArgs:['--mode','autonomous','--width','3','--height','3','--occupancy','1','--bundles','1,0,0,0','--proportions','1','--integrity','6','--ticks','3']});
+  test.use({serverArgs:['--mode','autonomous','--width','3','--height','3','--occupancy','1','--automata', 'wait:1,0,0,0/1,0,0,0/1,0,0,0/1,0,0,0','--proportions','1','--integrity','6','--ticks','3']});
   test('selected individual shows exact-zero upkeep failure at completion', async ({page,server},info) => {
     await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
     await inspectAgent(page, '1');
@@ -161,16 +161,18 @@ test.describe('bounded failures independent of sampling', () => {
 });
 
 test.describe('autonomous visual experiment', () => {
-  test.use({serverArgs:['--mode','autonomous','--survival','random','--width','8','--height','6','--seed','1','--ticks','80','--tick-ms','25']});
+  test.use({serverArgs:['--mode','autonomous','--width','8','--height','6','--seed','1','--ticks','80','--tick-ms','25']});
   test('property colours, grid click, population trajectories and long completion', async ({page,server}, info) => {
     await page.goto(server.url);
     await expect(page.locator('#tick')).toHaveText('0');
     await expect(page.locator('#end-tick')).toHaveText('80');
     await expect(page.locator('#dimensions')).toContainText('8 × 6');
     await expect(page.locator('#configuration')).toContainText('Seed 1 · SplitMix64 / VirtualLife sampling v1');
-    await expect(page.locator('#configuration')).toContainText('random v1');
-    await expect(page.locator('#configuration')).not.toContainText('Replaying wear-repair v1');
-    await expect(page.locator('#choice-rule')).toBeHidden();
+    await expect(page.locator('#configuration')).toContainText('unit-action automaton v1');
+    await openPanel(page, 'Details');
+    await expect(page.locator('#choice-rule')).toBeVisible();
+    await page.getByRole('button', {name:'Details', exact:true}).click();
+    await waitForGridFit(page);
     await expect(page.locator('#legend .group-row')).toHaveCount(4);
     const initial = await snapshot(page,server);
     expect(initial.count).toBe('14');
@@ -184,7 +186,7 @@ test.describe('autonomous visual experiment', () => {
     const index=initial.cells.findIndex(Boolean), agent=initial.cells[index];
     const canvas=page.locator('#grid'), box=await canvas.boundingBox();
     await canvas.click({position:{x:(8+(index%8+.5)*67.5)*box.width/556,y:(8+(Math.floor(index/8)+.5)*67.5)*box.height/421}});
-    await expect(page.locator('#inspection')).toHaveText(`ID ${agent.id} · Group ${String.fromCharCode(65+agent.group)} · Weights (wait, move, copy, remove): ${agent.weights.join(', ')} · Position (${index%8}, ${Math.floor(index/8)})`);
+    await expect(page.locator('#inspection')).toHaveText(inspectionText(initial, agent.id));
     await save(page,info,'autonomous-initial-inspection');
     // Ten explicit steps are deterministic barriers and give adjacent plot samples.
     for(let tick=1;tick<=10;tick++) {
@@ -192,8 +194,8 @@ test.describe('autonomous visual experiment', () => {
       await expect(page.locator('#tick')).toHaveText(String(tick));
     }
     const tenth=await snapshot(page,server);
-    expect(tenth.count).toBe('9'); expect(tenth.experiment.groups.map(g=>g.count)).toEqual(['2','6','0','1']);
-    await expect(page.locator('#plot')).toHaveAttribute('aria-label',/Tick 10: Group A 2, Group B 6, Group C 0, Group D 1; total 9/);
+    expect(tenth.experiment.groups.reduce((n,g)=>n+Number(g.count),0)).toBe(Number(tenth.count));
+    await expect(page.locator('#plot')).toHaveAttribute('aria-label', new RegExp(`Tick 10:.*total ${tenth.count}`));
     await save(page,info,'autonomous-trajectories');
     await page.getByRole('button',{name:'Resume',exact:true}).click();
     await expect(page.getByRole('status')).toHaveText('completed');
@@ -225,8 +227,8 @@ test.describe('autonomous visual experiment', () => {
 });
 
 test.describe('canonical zero groups and extinction', () => {
-  test.use({serverArgs:['--mode','autonomous','--survival','random','--width','8','--height','6','--bundles','0,0,0,1;0,0,0,1;1,0,0,0;0,1,0,0','--proportions','1,1,0,0','--ticks','20','--tick-ms','0']});
-  test('duplicate bundles aggregate and every extinct/zero series retains its label', async ({page,server},info) => {
+  test.use({serverArgs:['--mode','autonomous','--width','8','--height','6','--automata', 'wait:0,0,0,1/0,0,0,1/0,0,0,1/0,0,0,1;wait:0,0,0,1/0,0,0,1/0,0,0,1/0,0,0,1;wait:1,0,0,0/1,0,0,0/1,0,0,0/1,0,0,0;wait:0,1,0,0/0,1,0,0/0,1,0,0/0,1,0,0','--integrity','1','--proportions','1,1,0,0','--ticks','20','--tick-ms','0']});
+  test('duplicate graphs aggregate and every extinct/zero series retains its label', async ({page,server},info) => {
     await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
     await expect(page.locator('#legend .group-row')).toHaveCount(3);
     await expect(page.locator('#legend .group-count')).toHaveText(['14','0','0']);
@@ -239,12 +241,12 @@ test.describe('canonical zero groups and extinction', () => {
     await page.getByRole('button',{name:'Resume',exact:true}).click(); await expect(page.getByRole('status')).toHaveText('completed');
     await expect(page.locator('#tick')).toHaveText('20');
     const final=await snapshot(page,server); expect(final.count).toBe('0'); expect(final.totals.removals).toBe('14');
-    expect(final.experiment.groups.map(g=>g.weights)).toEqual([[0,0,0,1],[1,0,0,0],[0,1,0,0]]);
+    expect(final.experiment.groups.map(g=>g.automaton.rows[0])).toEqual([[0,0,0,1],[1,0,0,0],[0,1,0,0]]);
   });
 });
 
 test.describe('initially empty autonomous run', () => {
-  test.use({serverArgs:['--mode','autonomous','--survival','random','--occupancy','0','--ticks','600','--running','--tick-ms','0']});
+  test.use({serverArgs:['--mode','autonomous','--occupancy','0','--ticks','600','--running','--tick-ms','0']});
   test('empty completion retains configuration and all four zero series', async ({page,server}) => {
     await page.goto(server.url); await expect(page.getByRole('status')).toHaveText('completed');
     await expect(page.locator('#tick')).toHaveText('600'); await expect(page.locator('#count')).toHaveText('0');

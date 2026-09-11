@@ -45,18 +45,19 @@ fn status_name(status: Status) -> &'static str {
 pub fn snapshot_json(sample: &Snapshot) -> Value {
     let experiment = sample.experiment.as_ref().map(|info| {
         let counts = info.counts(&sample.cells);
+        let rules = info.config.maintenance;
         json!({
             "seed": info.config.seed.to_string(),
             "generator": crate::experiment::GENERATOR, "version": env!("CARGO_PKG_VERSION"),
-            "survival": info.config.survival(), "protocol": info.config.protocol(),
+            "protocol": "unit-action automaton v1",
             "preset": presets::matching(info),
-            "presets": info.config.maintenance.is_some().then(presets::catalog),
-            "maintenance": info.config.maintenance.map(|rules| json!({"maximum":rules.maximum,"upkeep":rules.upkeep,"crowding_threshold":rules.crowding_threshold,"crowding_upkeep":rules.crowding_upkeep,"move_wear":rules.move_wear,"copy_wear":rules.copy_wear,"repair":rules.repair})),
+            "presets": presets::catalog(),
+            "maintenance": json!({"maximum":rules.maximum,"upkeep":rules.upkeep,"crowding_threshold":rules.crowding_threshold,"crowding_upkeep":rules.crowding_upkeep,"move_wear":rules.move_wear,"copy_wear":rules.copy_wear,"repair":rules.repair}),
             "occupancy": format!("{}.{:06}", info.config.occupancy / 1_000_000, info.config.occupancy % 1_000_000),
             "groups": info.groups.iter().enumerate().map(|(index, group)| json!({
-                "weights": group.weights.0, "proportion": group.proportion.to_string(),
+                "proportion": group.proportion.to_string(),
                 "automaton": group.automaton,
-                "automaton_name": group.automaton.map(|machine| crate::automaton::PRESETS.iter().find(|p|p.machine == machine).map_or("Custom automaton",|p|p.name)),
+                "automaton_name": crate::automaton::PRESETS.iter().find(|p|p.machine == group.automaton).map_or("Custom automaton",|p|p.name),
                 "initial_count": group.initial_count.to_string(), "count": counts[index].to_string()
             })).collect::<Vec<_>>()
         })
@@ -67,38 +68,54 @@ pub fn snapshot_json(sample: &Snapshot) -> Value {
         .enumerate()
         .map(|(index, cell)| {
             cell.map(|agent| {
-                if sample.experiment.is_none() {
+                let Some(info) = &sample.experiment else {
                     return json!({"id": agent.id.to_string(), "value": agent.value.to_string()});
-                }
-                let group = sample.experiment.as_ref().map(|info| info.groups.iter().position(|g| g.matches(&agent)).expect("configured group"));
-                let mut cell = json!({"id": agent.id.to_string(), "value": agent.value.to_string(), "weights": agent.weights.0, "group": group});
-                if let Some(rules) = sample.experiment.as_ref().and_then(|info| info.config.maintenance) {
-                    let cost = crate::engine::upkeep_at(sample.width, sample.height, &sample.cells,
-                        crate::engine::Position::new(index % sample.width, index / sample.width), rules)
-                        .expect("snapshot of a validated world");
-                    cell["integrity"] = json!(agent.integrity);
-                    cell["last_action"] = json!(agent.last_action.map(crate::engine::ActionState::label));
-                    // These describe the displayed frame, not the previous tick's charge.
-                    cell["occupied_neighbors"] = json!(cost.occupied_neighbors);
-                    cell["next_tick_upkeep"] = json!(cost.effective_upkeep.to_string());
-                    cell["crowding_upkeep"] = json!(cost.crowding_upkeep);
-                    if let Some(machine) = agent.automaton {
-                        cell["state"] = json!(agent.last_action.unwrap_or(machine.initial).label());
-                        cell["integrity_after_upkeep"] = json!(u64::from(agent.integrity).saturating_sub(cost.effective_upkeep));
-                        cell["transition_tickets"] = if u64::from(agent.integrity) <= cost.effective_upkeep {
-                            Value::Null
-                        } else {
-                            let neighbours = crate::engine::neighbor_positions(sample.width,sample.height,
-                                crate::engine::Position::new(index % sample.width,index / sample.width))
-                                .expect("snapshot of a validated world")
-                                .map(|p|sample.cells[p.y * sample.width + p.x]);
-                            json!(crate::experiment::transition_weights(agent,
-                                (u64::from(agent.integrity)-cost.effective_upkeep) as u32,
-                                rules.maximum,&neighbours).map(|ticket| ticket.to_string()))
-                        };
-                    }
-                }
-                cell
+                };
+                let group = info
+                    .groups
+                    .iter()
+                    .position(|g| g.matches(&agent))
+                    .expect("configured group");
+                let rules = info.config.maintenance;
+                let position =
+                    crate::engine::Position::new(index % sample.width, index / sample.width);
+                let cost = crate::engine::upkeep_at(
+                    sample.width,
+                    sample.height,
+                    &sample.cells,
+                    position,
+                    rules,
+                )
+                .expect("snapshot of a validated world");
+                let after_upkeep = u64::from(agent.integrity).saturating_sub(cost.effective_upkeep);
+                let tickets = if after_upkeep == 0 {
+                    None
+                } else {
+                    let neighbours =
+                        crate::engine::neighbor_positions(sample.width, sample.height, position)
+                            .expect("snapshot of a validated world")
+                            .map(|p| sample.cells[p.y * sample.width + p.x]);
+                    Some(
+                        crate::experiment::transition_weights(
+                            agent,
+                            after_upkeep as u32,
+                            rules.maximum,
+                            &neighbours,
+                        )
+                        .map(|ticket| ticket.to_string()),
+                    )
+                };
+                json!({
+                    "id": agent.id.to_string(), "value": agent.value.to_string(), "group": group,
+                    "integrity": agent.integrity,
+                    "last_action": agent.last_action.map(crate::engine::ActionState::label),
+                    "state": agent.last_action.unwrap_or(agent.automaton.initial).label(),
+                    // Costs describe the displayed frame, not the previous tick's charge.
+                    "occupied_neighbors": cost.occupied_neighbors,
+                    "next_tick_upkeep": cost.effective_upkeep.to_string(),
+                    "crowding_upkeep": cost.crowding_upkeep,
+                    "integrity_after_upkeep": after_upkeep, "transition_tickets": tickets,
+                })
             })
         })
         .collect();
@@ -106,11 +123,7 @@ pub fn snapshot_json(sample: &Snapshot) -> Value {
         "moves":sample.totals.moves.to_string(),"creations":sample.totals.creations.to_string(),
         "removals":sample.totals.removals.to_string(),"value_changes":sample.totals.value_changes.to_string()
     });
-    if sample
-        .experiment
-        .as_ref()
-        .is_some_and(|info| info.config.maintenance.is_some())
-    {
+    if sample.experiment.is_some() {
         totals["repairs"] = json!(sample.totals.repairs.to_string());
         totals["failures"] = json!(sample.totals.failures.to_string());
     }
@@ -345,6 +358,13 @@ impl Api {
                     &run.run_id,
                 );
             }
+            // Serde structs also accept arrays; commands are objects in this API.
+            if bytes.iter().copied().find(|b| !b.is_ascii_whitespace()) != Some(b'{') {
+                return identified(
+                    error(StatusCode::BAD_REQUEST, "command must be a JSON object"),
+                    &run.run_id,
+                );
+            }
             let input: CommandInput = match serde_json::from_slice(&bytes) {
                 Ok(value) => value,
                 Err(_) => {
@@ -479,17 +499,6 @@ impl Api {
             ));
         };
         if let Some(preset) = preset {
-            if settings.maintenance.is_none() {
-                return self.current_response(error(
-                    StatusCode::CONFLICT,
-                    "presets are available only in wear-repair mode",
-                ));
-            }
-            settings.bundles = preset
-                .bundles
-                .into_iter()
-                .map(crate::engine::Weights)
-                .collect();
             settings.automata = preset.automata;
             settings.proportions = preset.proportions.to_vec();
         }
@@ -699,12 +708,8 @@ mod tests {
     fn check_restart_initialization_and_cleanup() {
         let api = autonomous_api();
         assert_eq!(
-            api.replace_run(
-                &precondition(&api),
-                Some(1),
-                presets::find("moderate-movement")
-            )
-            .status(),
+            api.replace_run(&precondition(&api), Some(1), presets::find("movement-runs"))
+                .status(),
             StatusCode::OK
         );
         let initial = api.current.lock().unwrap().clone();
@@ -713,7 +718,7 @@ mod tests {
         // Exercise the real initializer's rejection without touching the valid worker.
         api.current.lock().unwrap().config.sample_every = 0;
         assert_eq!(
-            api.replace_run(&headers, Some(42), presets::find("lower-copying"))
+            api.replace_run(&headers, Some(42), presets::find("repair-cycles"))
                 .status(),
             StatusCode::INTERNAL_SERVER_ERROR
         );
@@ -751,7 +756,7 @@ mod tests {
             assert_eq!(current.config.ticks, 12);
             assert_eq!(
                 current.cache.lock().unwrap()["experiment"]["preset"],
-                "moderate-movement"
+                "movement-runs"
             );
             assert_eq!(current.cache.lock().unwrap()["tick"], "0");
             assert_eq!(
@@ -911,15 +916,15 @@ mod tests {
         let (_, _, info) = crate::experiment::ExperimentConfig {
             width: 3,
             height: 3,
-            bundles: vec![crate::engine::Weights::default()],
+            automata: vec![crate::automaton::Automaton::default()],
             proportions: vec![1],
-            maintenance: Some(crate::engine::Maintenance {
+            maintenance: crate::engine::Maintenance {
                 maximum: u32::MAX,
                 upkeep: u32::MAX,
                 crowding_threshold: 0,
                 crowding_upkeep: u32::MAX,
                 ..Default::default()
-            }),
+            },
             ..crate::experiment::ExperimentConfig::default()
         }
         .initialize()

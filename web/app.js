@@ -70,8 +70,8 @@ function showPresetSelection(info) {
   const chosen = catalog.find(preset => preset.id === pendingPreset);
   byId('current-preset').textContent = `Current run: ${current?.name ?? 'Custom settings'}.`;
   byId('next-preset').textContent = `Next restart: ${chosen?.name ?? 'Custom settings'}. Use either Restart button to apply.`;
-  const groups = chosen ? chosen.bundles.map((weights, i) => ({weights, automaton:chosen.automata?.[i], proportion: chosen.proportions[i]})) : info.groups;
-  byId('preset-weights').textContent = groups.map((group, i) => `${groupLabel(i)}: ${group.automaton ? 'Inherited action graph' : group.weights.join(' / ')} (proportion ${group.proportion})`).join('; ');
+  const groups = chosen ? chosen.automata.map((automaton, i) => ({automaton, proportion: chosen.proportions[i]})) : info.groups;
+  byId('preset-summary').textContent = groups.map((group, i) => `${groupLabel(i)}: Inherited action graph (proportion ${group.proportion})`).join('; ');
   renderPresetAutomata(byId('preset-automata'),groups);
 }
 function syncPresets(info) {
@@ -80,7 +80,7 @@ function syncPresets(info) {
   pendingPreset = info?.preset ?? '';
   const options = byId('preset-options'); options.replaceChildren();
   const choices = !catalog.length || info.preset ? catalog : [...catalog, {
-    id: '', name: 'Keep current custom settings', description: 'Retain the current weight bundles and proportions.',
+    id: '', name: 'Keep current custom settings', description: 'Retain the current graphs and proportions.',
   }];
   for (const preset of choices) {
     const button = document.createElement('button'); button.type = 'button';

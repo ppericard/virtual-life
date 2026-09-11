@@ -1,6 +1,12 @@
-# VirtualLife — model and examples
+# VirtualLife model
 
-**Model status:** autonomous wear-repair supports inherited probabilistic unit-action automata with integrity and crowding responses. Flat weight bundles remain the compatibility launch default; use `--automaton-preset mixed` for the four new graphs. Survival follows integrity and operating history. The earlier random-removal Option A and scripted fixture remain available for comparison and regression coverage. None is evidence of biological realism or emergence. See [README](README.md) for the overview and [the development reference](docs/development.md#verification) for usage and checks.
+**Accepted model:** inherited probabilistic finite-state machines are the sole autonomous strategy. The default population uses the four FSM presets. Flat action-weight policies and random removal are retired. The explicit scripted demo remains an engine regression fixture; it is not evidence of emergence.
+
+## Individuals and the world
+
+An agent is an individual, with a stable ID, inherited graph, current integrity and last selected action. Biological species or roles are interpretations of observed behaviour, not classes with separate code. Resources may eventually be represented by individuals with different properties; no separate resource or energy layer exists now.
+
+The world is a rectangular grid with wraparound edges and eight immediate neighbours. Dimensions are at least 3, so neighbours are distinct. A square holds at most one individual. Updates are synchronous: everyone consults the same starting grid, and newborns first act on the following tick. Observation never changes the simulation.
 
 ## Probabilistic unit-action automata
 
@@ -8,7 +14,7 @@
 
 Each graph holds an initial state, four rows of four nonnegative integer weights, a Copy damage gain and a Move crowding gain (both 0–255). Every inherited row must contain a positive weight. Initial agents and newborns use the inherited initial state's row but have not yet acted. Thereafter the last selected action selects the row, including rejected Move/Copy attempts. One draw chooses the next state and its unit action in the same tick. Offspring inherit the whole graph and response parameters, receive fresh maximum integrity and no selected action, and first act next tick. Exact inherited graphs, initial state and response parameters define groups; current integrity and action state do not.
 
-After the unchanged mandatory upkeep check, let `d` be missing integrity as a fraction of maximum, `n` occupied neighbours out of eight, and `(W,M,C,R)` the current inherited row. The conceptual weights are:
+After the mandatory upkeep check, let `d` be missing integrity as a fraction of maximum, `n` occupied neighbours out of eight, and `(W,M,C,R)` the current inherited row. The conceptual weights are:
 
 | Next action | Adjusted relative weight |
 |---|---|
@@ -42,49 +48,72 @@ Illustrative presets, all initially in Wait:
 | Copy bursts | Copy can repeat; Copy damage gain 2 gives multiplier `1 + 2d`. |
 | Wait cycles | Wait can repeat; Repair sometimes leads to Move or Copy; Move leads to Wait. |
 
-Exact rows are in `src/automaton.rs` and exposed in CLI metadata and browser diagrams. These are starting hypotheses, without a coexistence or survival guarantee. `unit-action automaton v1` identifies this sampling protocol. Flat bundles preserve the earlier v3 draw bounds and results exactly; the historical sections below describe those comparison rules.
+Exact rows are in `src/automaton.rs` and exposed in CLI metadata and browser diagrams. These are starting hypotheses, without a coexistence or survival guarantee. `unit-action automaton v1` identifies this sampling protocol.
 
 **Near-term model priority:** mutation during copying, so new inherited types can arise beyond the starting presets. Pierre explicitly wants this soon. It is not implemented here; mutation rate, size, allowable graph changes, and how to display growing diversity need a separate model decision. **Later exploration:** longer-lived behaviour modes (for example roaming and recovery) which can each perform multiple unit actions. The current implementation keeps unit actions as states.
 
-## Confirmed starting constraints
+## Tick execution and survival
 
-An agent represents an individual with identity, properties, and state. Resources are agents with different properties. No species hierarchy, programmed predation/cooperation, or separate resource layer. Inactivity alone does not imply removal. Biological labels describe interpretations afterward.
-
-The world is a discrete rectangular 2D grid with wraparound edges and eight immediate neighboring squares. Each square holds at most one agent. Agents are treated at roughly the same spatial scale; mixed microscopic/macroscopic sizes, overlap, multiple occupancy, and containment are out of scope initially. Keep those future possibilities open without implementing layers or spatial frameworks now.
-
-Updates are synchronous: decisions consult the unchanged starting state; each starting agent acts at most once; a new agent first acts on the following tick. Creation, removal, and property changes belong early. An agent already meeting a removal condition must not act before removal; Option A random removal is the individual's sole chosen action that tick.
-
-The engine must run without a viewer. With the same initial state, rules, and number of ticks, observation alone must not change the resulting world. Randomness has explicit reproducibility settings; do not promise cross-version identity from a seed alone. User interventions are different from observation and must be applied between ticks.
-
-## Task 01 fixture: a trustworthy live grid
-
-These rules specify a small, deterministic test of the machinery. They do not prescribe the first autonomous experiment. There is no random action selection, automatic expiry, creation cost, energy, or biological meaning attached to its value field.
-
-### State and input
-
-The grid has width and height of at least 3, avoiding duplicated neighbors on tiny wrapped grids. Validate dimensions, indexing, and occupancy. An agent has a stable numeric ID and one integer `value`; its containing square determines its location. IDs remain unchanged on movement and are unique and non-reusing within a run. Allocate accepted creations in a documented stable order independent of proposal input order. No generic property bag is needed.
-
-The implementation uses `u64` IDs and `i64` values. Accepted creations receive increasing IDs in row-major order of their creators' **starting squares**: increasing y, then x. Allocation starts above the highest initial ID (at 1 for an empty grid), and rejected creations consume no IDs. The largest `u64` is reserved as an exhaustion sentinel; exhausted allocation, tick, or event counters return an error before committing a transition. Setting an unchanged value succeeds as a no-op and adds zero to the value-change total.
-
-A short ordinary function supplies at most one proposal per starting agent: wait, move to a neighboring square, set its own value, create a copy in a neighboring square, or remove itself. Missing proposals mean wait. A copy receives a new ID and the creator's starting value; the creator remains unchanged. Removal is the actor's only action that tick.
-
-Unknown actors, duplicate proposals for one actor, and out-of-range or non-neighbor targets are invalid input. Reject invalid input without partially changing the world, counters, tick, or ID allocation. Occupied targets and destination conflicts are ordinary rejected actions, not invalid input.
-
-### One tick
-
-```text
-Read the starting grid without changing it.
-Validate the proposals for the starting agents.
-Resolve competing destination claims.
-Build the next grid from the accepted outcomes.
-Replace the current grid and update the tick and accepted-event totals.
+```mermaid
+flowchart TD
+    Start[Unchanged starting grid] --> Cost[Count neighbours and calculate upkeep]
+    Cost --> Survive{Integrity exceeds upkeep?}
+    Survive -- No --> Fail[Remove and record failure]
+    Survive -- Yes --> Choose[Adjust current FSM row and draw action]
+    Choose --> Wear[Pay wear for Move or Copy attempts]
+    Wear --> Resolve[Resolve affordable destination claims]
+    Resolve --> Commit[Commit next grid, states, IDs and events together]
+    Fail --> Commit
 ```
 
-Moves and creations can succeed only into squares empty at the start. If two or more proposals claim the same eligible square, all those claims fail, including mixed move/create claims. Rejected movers remain at their starting square; rejected creation creates nothing. A square vacated by movement or removal is available only next tick. No same-tick swaps or movement chains.
+Shared maintenance defaults are maximum integrity 10, base upkeep 1, extra crowding upkeep 1 when at least five starting neighbours are occupied, Move wear 1, Copy wear 2, and gross Repair 4. These settings are illustrative, not calibrated biology. A threshold exists for **crowding upkeep**, not for Repair probability.
 
-Changing proposal input order must not change the next world, accepted-event totals, or allocated IDs. New agents occur only in the next world and cannot propose an action in the tick that creates them. Count accepted events during the transition; displayed frame differences are not an event log.
+Effective upkeep is `base + (occupied >= crowding_threshold ? crowding_upkeep : 0)`. Individuals with integrity less than or equal to upkeep fail before choice, with no random draws. Otherwise subtract upkeep, then select the FSM action:
 
-### Worked example
+- **Wait:** no further change.
+- **Move / Copy:** draw a target uniformly among all eight neighbours before testing affordability. Integrity must exceed extra wear; otherwise remove the individual, with no destination claim or new ID. Affordable attempts pay wear even if occupancy or conflict rejects them. No retries or target filtering.
+- **Repair:** add gross repair after upkeep, capped at maximum. Count a repair only when integrity increases after upkeep. Its cost is the action opportunity; no material account exists yet.
+
+Only squares empty at the start can receive a move or child. All affordable claims to a shared target fail, including mixed Move/Copy claims. Moving or dying neighbours still count for upkeep and occupancy. Movement pays the origin's upkeep; vacated squares become available next tick. There are no same-tick swaps or chains.
+
+Successful children inherit the complete graph, start at maximum integrity with no previous action, and receive a fresh ID. Parents retain their IDs and pay their costs. This is not an energy-conservation model. Inactivity alone does not remove agents, but upkeep can exhaust them.
+
+| Starting integrity and attempted action | Result with fewer than five occupied neighbours |
+|---|---|
+| 10, Move | 8 after upkeep and movement wear |
+| 6, Repair | 9 after upkeep and gross repair 4 |
+| 9, Repair | 10, capped at maximum |
+| 10, rejected Copy | Parent 7; no child or ID allocated |
+| 10, successful Copy | Parent 7; child 10, first active next tick |
+| 2, Move | Failure from movement wear before claiming |
+| 3, Copy | Failure from copying wear before claiming |
+| 1, Repair | Failure from upkeep before choice |
+
+At five or more neighbours, default upkeep is 2 instead of 1. Threshold 0 applies the surcharge everywhere; surcharge 0 disables it. Base and surcharge are u32, added in u64 without overflow: two maximal costs total 8,589,934,590.
+
+## Identity, initialization and reproducibility
+
+The initial population is `floor(width * height * occupancy)`. Exact equal graphs coalesce and their proportions add. Distinct initial states, rows or response parameters define distinct groups even when normalized choices happen to match. Current state, integrity, ID, ancestry and location do not define groups. Zero-proportion and extinct groups keep their labels; the current viewer supports at most eight configured groups.
+
+Allocate initial group counts by largest remainder, breaking ties by first configured group. Shuffle square indices with SplitMix64, fill group quotas, then assign increasing IDs in row-major order. Each tick visits starting occupants in row-major order. Draw one action per upkeep survivor, then one destination only for selected Move/Copy, even if it is unaffordable. Observers never consume this random stream.
+
+IDs are u64 and never reused within a run. Accepted children receive IDs in row-major order of their creators' starting squares. Rejected copies consume none. The largest u64 is reserved as an exhaustion sentinel. Invalid proposals (unknown/duplicate actors, non-neighbour/out-of-range targets) or exhausted IDs/ticks/counters reject the whole transition without changing grids, counters, memory or failure evidence. Missing proposals mean Wait. Proposal order cannot affect the result.
+
+Failure records retain the latest 128 outcomes, including tick, ID, position, starting integrity, occupied neighbours, exact upkeep and attempted action wear. Cumulative counters and discarded-record counts remain exact. These engine records are independent of plot sampling. UI inspection distinguishes potential next-tick costs from historical charges.
+
+A reproducible run needs the same code/protocol, dimensions, occupancy, graphs, proportions, maintenance, seed and tick count. A seed alone is not a cross-version guarantee. `SplitMix64 / VirtualLife sampling v1` identifies initialization and bounded sampling; `unit-action automaton v1` identifies the chooser. Bounded draws reject the short remainder before taking modulo.
+
+## Observation and controls
+
+The live tool receives immutable, tick-stamped samples without blocking simulation on rendering. Show the grid, inspection of an agent's ID/properties/position (fixture value in demo mode), counts, accepted-event totals, and bounded population-versus-tick plots. Mark sampling gaps; missing samples are not missing simulation steps. Paused and completed runs must make the actual final state available. Headless and observed runs use the same transitions.
+
+Pause/resume and single-step act between ticks. Start paused; single-step advances exactly once only while paused, and cannot succeed beyond the finite end. Queued commands are distinguished from worker-applied actions by receipts. Completed state remains readable; stopped/failed or disconnected states are visible. A lost non-idempotent control response is not automatically retried.
+
+The native process owns the experiment. Refreshing, closing, hiding, or disconnecting the browser does not pause, reset, or terminate it. A new page reconnects to its current/final snapshot; page-local plot history starts there without fabricating earlier samples. Ctrl+C explicitly shuts down the server and cleanly stops/joins the worker. Restarting the process starts a new experiment. Speed limiting belongs in the runner, not the transition. State editing and modest exports follow early but are outside Tasks 01–02. Record future edits with their applied tick. Lossy live observation is not a complete recording or replay system.
+
+## Scripted engine fixture
+
+`--mode demo` supplies explicit proposals instead of the autonomous chooser. It uses an integer value, SetValue and Remove actions without maintenance. Those actions are engine test operations, not FSM choices. An unchanged SetValue is a no-op; children copy the starting value.
 
 Use a 5 × 5 grid with zero-based `(x, y)` coordinates. Initially A (ID 1, value 10) is at `(0,2)`, B (ID 2, value 20) at `(2,2)`, and C (ID 3, value 30) at `(4,2)`. Unmentioned agents wait.
 
@@ -99,141 +128,3 @@ Use a 5 × 5 grid with zero-based `(x, y)` coordinates. Initially A (ID 1, value
 Final state: B (ID 2, value 21) at `(2,2)` and E (ID 5, value 21) at `(1,2)`. Accepted totals: two moves, two creations, three removals, two value changes. The finite demonstration ends clearly; do not present it as autonomous persistence.
 
 The viewer ends at tick 5. A headless request for more than five ticks uses missing proposals (all wait) afterward: only the tick advances, with the final agents, values, IDs, and accepted totals unchanged. A zero-tick request reports the initial state.
-
-## Observation and controls
-
-The live tool receives immutable, tick-stamped samples without blocking simulation on rendering. Show the grid, inspection of an agent's ID/properties/position (fixture value in demo mode), counts, accepted-event totals, and bounded population-versus-tick plots. Mark sampling gaps; missing samples are not missing simulation steps. Paused and completed runs must make the actual final state available. Headless and observed runs use the same transitions.
-
-Pause/resume and single-step act between ticks. Start paused; single-step advances exactly once only while paused, and cannot succeed beyond the finite end. Queued commands are distinguished from worker-applied actions by receipts. Completed state remains readable; stopped/failed or disconnected states are visible. A lost non-idempotent control response is not automatically retried.
-
-The native process owns the experiment. Refreshing, closing, hiding, or disconnecting the browser does not pause, reset, or terminate it. A new page reconnects to its current/final snapshot; page-local plot history starts there without fabricating earlier samples. Ctrl+C explicitly shuts down the server and cleanly stops/joins the worker. Restarting the process starts a new experiment. Speed limiting belongs in the runner, not the transition. State editing and modest exports follow early but are outside Tasks 01–02. Record future edits with their applied tick. Lossy live observation is not a complete recording or replay system.
-
-**9 September 2026 — restart recovery (Pierre's decision):** when a retained page detects a different server run, it clears the previous run's page-local history, selection and pending control state, displays a new-experiment notice, and follows the new run's actual state. It does not resume, step or retry commands automatically. Same-run reconnect retains history. Delayed old-run control requests are rejected and old replies cannot change the new page state. Run identity belongs to the HTTP adapter, not simulation state or model randomness.
-
-**10 September 2026 — seeded restart (Pierre's decision):** an explicit browser restart replaces an autonomous experiment using an editable fixed seed (default 1) or an OS-random seed disclosed for reproduction. It retains the current configuration unless a property preset is explicitly supplied, starts paused at tick 0 (completed for a zero-tick limit), and clears prior run evidence and page histories. Completed runs can restart. Every replacement gets a new HTTP identity, including repeats with the same seed. Random seed selection consumes no simulation draws. The scripted demo and headless lifecycle are unchanged; no run restarts automatically.
-
-**10 September 2026 — browser property presets (Pierre's decision):** Original, Moderate movement, Wide movement range and Lower copying are optional wear-repair initialization choices. Moderate movement and Wide movement range use Copy weight 4 out of 80 (5% base chance); Lower copying uses 2 out of 80 (2.5%). Their reduced Copy weight is transferred to Wait, preserving each group's Move and Repair weights and total weight 80; crowding reduces Copy's chance further. Original and CLI defaults remain unchanged. Selecting a button changes only the page's pending choice; an explicit fixed/random-seed restart applies it. A preset replaces the four weight bundles and sets their proportions to equal shares, preserving dimensions, occupancy, maintenance, duration, pacing and sampling. Seed-only restarts subsequently replay those current effective settings, including older preset tuples that now appear as custom configurations; there is no automatic migration. Pending choices survive polling and same-run reconnect; a new run synchronizes them to its actual settings. Current custom settings remain available when cancelling a pending named choice. A failed replacement retains both the old run and its settings. Demo and random-removal runs do not accept these presets. Preset names describe illustrative property combinations, not inherited identities or biological classes, and do not guarantee density, equilibrium or coexistence. Group identity and inheritance still come from actual properties; no transition rule or default changes.
-
-## Decisions, limits, and next model checkpoint
-
-**6 September 2026 — geometry and scheduling (Pierre-confirmed):** grid, eight neighbors, single occupancy, comparable scales, and synchronous updates keep the starting algorithm understandable. This does not exclude future changes; occupancy changes may require redesign.
-
-**6 September 2026 — conflict policy (Task 01 working choice):** reject all competing claims and use start-of-tick emptiness. This avoids traversal-order winners and complicated move chains, but can produce congestion. The minimum dimension and integer value are also fixture choices, not universal requirements. Alternatives such as seeded random winners need a model checkpoint rather than an unnoticed implementation change.
-
-**6 September 2026 — browser interface (Pierre's decision):** replace the native window with a small local browser observer/control surface, retaining the native Rust engine and headless execution. Observation is bounded and independent of rendering. Browser lifetime no longer owns worker lifetime. This changes application lifecycle, not transition rules or the scripted table.
-
-**9 September 2026 — Option A (Pierre's decision):** implement the four-property-group autonomous experiment below. This supersedes issue #8's earlier identical-properties proposal and awaiting-model-choice wording. The subsequently approved wear-repair crowding rule below supplies the first neighbour-dependent choice.
-
-## Wear and repair: survival through operating history
-
-**10 September 2026 — Pierre's decision:** replace a chosen random death with a small integrity/maintenance experiment, before adding neighbourhood or energy rules. Each individual has one mutable nonnegative integer `integrity`. All individuals share adjustable maximum/initial/newborn integrity, upkeep, extra move/copy wear and gross repair. Their species is the exact **Wait/Move/Copy/Repair weight tuple** within this shared rule; current integrity, ID, ancestry and position do not define a species. Identical bundles coalesce as before. Properties do not mutate during life.
-
-The default is `--survival wear-repair`, with maximum 10, base upkeep 1, extra crowding upkeep 1 at five or more occupied neighbours, extra move wear 1, extra copy wear 2 and gross repair 4. The fourth choice is Repair, replacing Remove. Default bundles are A `(2,4,1,3)`, B `(2,2,2,4)`, C `(4,1,1,4)` and D `(1,5,2,2)`. The 32 × 24 grid, occupancy 0.3, equal proportions, seed 1 and 500-tick limit are unchanged. These are adjustable illustrative settings, not values tuned for coexistence or biological calibration.
-
-For every tick, validate all state, rules and proposals without mutation. Count occupied squares among the eight wrapped neighbours in the unchanged starting world. With count `N`, effective upkeep is `base upkeep + (N >= crowding threshold ? crowding upkeep : 0)`. An individual with `integrity <= effective upkeep` fails maintenance and is removed before choosing or performing any action, with no action or destination draw. It cannot repair itself in that tick. Otherwise it pays effective upkeep and chooses one weighted action using the crowding policy below:
-
-- **Wait:** no further change; upkeep has still been paid.
-- **Move or Copy:** draw uniformly among all eight neighbours, before checking affordability or occupancy. If integrity after upkeep is less than or equal to the extra wear, the individual fails before the spatial action. It makes no claim, creates no child and allocates no ID. Otherwise charge the wear, even when occupancy or competing claims subsequently reject the destination. There are no retries.
-- **Repair:** use the entire action opportunity to add gross repair after upkeep, capped at the maximum. There is no material or energy cost yet. Count one repair when integrity actually increases relative to its value after upkeep; a capped repair with a positive restoration still counts if it restores upkeep loss.
-
-Only affordable move/copy attempts claim destinations. All claims still use the unchanged starting grid: competing affordable claims all fail, including mixed move/copy claims. A square vacated by failure remains start-occupied and unavailable until the next tick. Normal wrapping, single occupancy, stable IDs and row-major creation-ID allocation remain unchanged. Integrity updates, spatial outcomes, IDs, events and failure evidence commit atomically; invalid input or exhausted counters leave both buffers and all state unchanged.
-
-A successful copy inherits the parent's weight tuple, receives a fresh ID and starts at shared maximum integrity. The parent pays upkeep and copy wear and retains its ID. The newborn first acts and first pays upkeep next tick. This is a fresh functional condition, **not an energy-conservation model**; there is no energy or material account to duplicate. Initial individuals also start at maximum integrity.
-
-### Crowding increases upkeep
-
-**10 September 2026 — Pierre's decision:** shared base upkeep is increased by a fixed surcharge when starting occupied neighbours meet the threshold. The default threshold is 5 and the surcharge is 1. Every group and every action, including Wait and Repair, pays by the same rule. Neighbours that will die or move during the tick still count. Movement pays the origin's cost; escaping crowding can reduce upkeep only on the following tick.
-
-`--crowding-threshold` accepts integers 0–8: zero applies the surcharge everywhere, and eight requires all neighbours occupied. `--crowding-upkeep` accepts nonnegative `u32` values; zero disables the surcharge. Both are rejected in random/demo modes, including zero-valued overrides. Base plus surcharge uses `u64` without wrapping or clamping: two `u32::MAX` costs total 8,589,934,590, which no allowed integrity can survive. This changes maintenance cost, without adding an energy account, neighbour properties or another action choice.
-
-### Copy tendency responds to local space
-
-**10 September 2026 — Pierre's decision:** multiply Copy's base probability by the fraction of the eight starting neighbours that are empty, transferring the removed probability to Wait. This applies only to autonomous wear-repair. For inherited weights `(W,M,C,R)` and `E` empty neighbours, choose from the exact integer tickets:
-
-```text
-Wait: 8W + (8-E)C    Move: 8M    Copy: EC    Repair: 8R
-Total: 8(W+M+C+R)
-```
-
-Multiplying all tickets by eight avoids rounding fractional Copy shares. With `(2,4,1,3)`, all eight empty gives `(16,32,8,24)` and the original probabilities; four empty gives `(20,32,4,24)`, halving Copy from 1/10 to 1/20; none empty gives `(24,32,0,24)`. With odd Copy weight 3 in `(1,2,3,4)`, one empty gives `(29,16,3,32)` and seven empty gives `(11,16,21,32)`. Zero Copy stays zero. Individual weights, inheritance and species grouping are unchanged; these temporary tickets are not new properties.
-
-Read occupancy from the unchanged starting world, including wrapped neighbours and individuals that will fail upkeep this tick. Do not count their squares as empty in advance. If the chooser itself fails upkeep it makes no draw. Move and Repair probabilities remain unchanged; selected Move/Copy still draw uniformly among **all eight neighbours**, before affordability, with no filtering or retry. Crowding changes Copy intent frequency, not the existing rules for whether an attempt succeeds. Full-neighbourhood Copy-only individuals choose Wait and pay only upkeep that tick.
-
-### Selected-action memory
-
-**10 September 2026 — Pierre's decision:** wear-repair individuals have a small probabilistic action automaton with states **Wait, Move, Copy and Repair**. Its stored state is the last action selected, not a successful event, an inherited property or an intention for the next tick. Initial individuals and newborns have **no previous action** (not yet acted). That initial value is not a fifth selectable action.
-
-The shared transition-weight function reads the current state, the individual's actual inherited weights, positive integrity after mandatory upkeep, and the eight unchanged starting neighbours. In this first increment every current state, including the initial value, returns the exact crowding tickets above. State and integrity do not alter those tickets yet. Thus the representation adds individual memory while preserving **wear-repair crowding v3**, its action/destination draw bounds and order, and all existing simulation outcomes. The next selected state comes from the same single action draw; there is no extra selection, draw or tick.
-
-For surviving individuals, stage the selected action alongside integrity before resolving destinations. An occupied or conflicted Move remains **Move**, and a rejected Copy remains **Copy**, with the same attempted wear as before. Missing proposals mean **Wait**, replacing any previous state. An upkeep failure makes no selection or random draw; an action-wear failure removes the individual before claiming. Neither leaves a surviving state to display. State, integrity, positions, IDs, counters and failure evidence commit atomically. Invalid batches or exhausted counters leave both buffers unchanged. Successful movement carries memory with the individual; a child inherits the parent's weight tuple and fresh maximum integrity, but starts with no selected action and first acts next tick.
-
-For example, with one occupied neighbour at the chosen destination, an individual at integrity 10 selects Move. Default upkeep costs 1 and attempted movement costs 1, leaving integrity 8. The occupied destination rejects the move: position is unchanged, accepted moves increase by zero, and stored state becomes **Move**. If its next proposal is missing, it pays the next tick's upkeep and stores **Wait**. The viewer must not infer either selection or success from position differences.
-
-Species/group identity remains the exact inherited weight tuple, regardless of integrity or action memory. The earlier random-removal policy and scripted fixture retain their existing actions and leave this wear-repair memory unused; they do not fabricate Wait/Move/Copy/Repair history. State-dependent preferences require a separate model decision.
-
-### Worked conditions and boundaries
-
-The first table uses fewer than five occupied neighbours throughout, so effective upkeep is 1:
-
-| Starting integrity and choice | Default result |
-| --- | --- |
-| 10, Move to an eligible unclaimed neighbour | 8: pay 1 upkeep and 1 movement wear |
-| 8, another Move | 6 |
-| 6, Repair | 9: pay 1, then restore 4 |
-| 9, Repair | 10: restoration is capped |
-| 10, Copy rejected by occupancy or another claim | Parent 7; no child and no new ID |
-| 10, successful Copy | Parent 7; child 10, inactive until the following tick |
-| 2, Move | Upkeep leaves 1; extra wear 1 would leave zero, so remove before claiming |
-| 3, Copy | Upkeep leaves 2; extra wear 2 would leave zero, so remove before claiming |
-| 1, Repair | Upkeep failure; no repair occurs |
-
-| Starting integrity and choice | 4 occupied neighbours | 5 or 8 occupied neighbours |
-| --- | --- | --- |
-| 6, Wait | 5 | 4 |
-| 6, Repair | 9: pay 1, restore 4 | 8: pay 2, restore 4 |
-| 2, Repair | 5 | Upkeep failure before repair or any random draw |
-| 6, Move attempt | 4 | 3; with 8 occupied neighbours the attempt is rejected and the individual stays in place |
-
-Maximum must be positive. Costs/restoration may be zero and may exceed the maximum; arithmetic uses wider integers or comparisons before subtraction. There is no survivor at integrity zero. There is no lifespan draw, age limit, random death choice, inactivity penalty, hidden balancing or reseeding. Sufficient repair can sustain an individual indefinitely; zero upkeep/costs can also permit persistence. Extinction and continued survival are both valid, and the finite run limit remains independent of either outcome.
-
-### Failure evidence and reproducibility
-
-Every failure has an engine-recorded cause: **upkeep**, **move wear** or **copy wear**. Records include ID, resulting tick, starting position, starting integrity, starting occupied-neighbour count, base upkeep, applied crowding surcharge, effective upkeep and selected extra wear (zero when upkeep failed first). Each run retains the latest 128 records in tick then starting-square order, counts discarded older records, and retains cumulative repairs/failures. This evidence is recorded on every simulation tick independently of viewers or sample cadence; it is bounded causal evidence, not a complete event journal. Live inspection shows occupied neighbours and potential next-tick upkeep for the **displayed neighbourhood**, not the last charged cost. Absent-agent inspection uses its recorded starting conditions even if the square is now empty or occupied by someone else, or states that its record has been discarded. Plot gaps do not fabricate events. Reconnection retains the same run's server evidence; a new experiment clears it.
-
-Initialization and bounded random draws use the SplitMix64 procedure below. The **wear-repair crowding v3** policy scans occupied starting squares in row-major order, skips all random draws for individuals unable to survive effective upkeep, then makes one bounded action draw below `8(W+M+C+R)` for every survivor. Tickets and their total use `u64`; with four `u32` base weights the total is at most `32 × u32::MAX`, safely below the limit. Do not simplify the common factor even when all eight neighbours are empty or Copy is zero: the bound is part of the reproducible protocol. Move/Copy then draws below 8, including unaffordable attempts. Wait/Repair draws no destination. Bounded-draw rejection still consumes raw generator values as documented; counting occupancy, adjusting tickets, integrity costs and repair add no random draws.
-
-V3 preserves v2's Copy-to-Wait tickets and draw bounds; the surcharge can change survival, affordability and later draws. Setting `--crowding-upkeep 0` reproduces **wear-repair crowding v2** simulation trajectories with otherwise matching settings and seed, while output retains v3's expanded evidence format. V2 changed the action bound and crowding choices relative to **wear-repair v1**, even where probabilities coincide; a v1 wear result requires its earlier source version. Initialization is unchanged. The random-removal comparison remains **random v1**, with its original bounds and draw order. Record the action protocol as well as settings, seed, source commit and Cargo.lock when reproducing results.
-
-## Option A comparison: random removal
-
-Select `--survival random` to run the earlier approved Option A, without integrity or repair. Its original default bundles and random draw/iteration order are preserved; the same baseline configuration still produces the earlier fixed-tick results. Maintenance overrides are rejected for this mode. The scripted `--mode demo` remains independent of both autonomous policies.
-
-A species is the exact tuple of four nonnegative integer weights: **wait, move, copy, remove**. At least one weight must be positive. Individuals with identical tuples belong to one group, regardless of labels, IDs, positions or ancestry. `(1,1,0,0)` and `(2,2,0,0)` are distinct bundles despite having equal action probabilities; grouping compares actual properties, not normalized probabilities. Labels A–D, colours and symbols are presentation only. The implementation supports one to eight distinct bundles; four is the default experiment, not four action implementations.
-
-Each starting individual uses the same procedure. Imagine numbered tickets in four adjacent piles: a `(4,5,1,1)` individual has 4 wait tickets, 5 move tickets, 1 copy ticket and 1 remove ticket. Draw one of the 11 tickets uniformly. A zero-weight action has no tickets and cannot be chosen. A move/copy draws one of **all eight neighbours**, uniformly, without checking occupancy first. Wait/removal draws no destination. The selected action becomes an ordinary proposal; the existing engine resolves the full batch against the unchanged starting grid.
-
-For example, a move from group A and a copy from group B both targeting a start-empty square both fail. They do not choose another target. If a third individual removes itself, its old square still cannot receive a move/copy in that tick. A successful copy retains the parent's complete weight tuple, receives a fresh ID in creator row-major order, and first draws an action next tick. Movement preserves ID and properties. Weights remain fixed throughout life; the fixture-only integer value is unused by autonomous choices and is not a species property.
-
-Removal is a random selected action, **not ageing or an inactivity penalty**. No mutation, energy, resources, neighbour-property-dependent choices, global population control, balancing, automatic reseeding or guaranteed coexistence are implemented. Any or all groups can become extinct. Every configured group remains in the legend and population observations at zero. The finite tick limit ends a run even when it is already empty; extinction does not trigger a special transition.
-
-### Illustrative initial settings
-
-The random-removal comparison defaults to 32 × 24, occupancy 0.3, four equal initial proportions, seed 1 and 500 ticks. Its bundles are A `(4,5,1,1)`, B `(4,3,2,1)`, C `(6,2,1,1)` and D `(2,6,2,1)`. These are adjustable experimental settings, **not scientifically calibrated values**. They illustrate different tendencies; no hidden mechanism tunes a winner or maintains coexistence. Both autonomous modes share the following initialization procedure.
-
-Occupancy specifies an **exact total**, rounded down: `floor(width × height × occupancy)`. For 768 squares and 0.3, place 230 agents. Initial proportions are nonnegative integer ratios. First combine proportions of identical bundles in first-appearance order. Allocate each group's exact quota by rounding down, then give the leftover individuals to the largest fractional remainders, breaking ties by that canonical group order. Equal ratios therefore yield 58, 58, 57, 57 agents. Zero ratios produce zero initial agents and remain visible; the total ratio must be positive even on an empty grid. The actual canonical groups, ratios and initial counts are recorded in browser and headless output.
-
-Shuffle all row-major square indices with descending Fisher–Yates; assign successive shuffled slots to the groups' exact quotas, then assign starting IDs 1, 2, … in occupied row-major order. This produces random placement without overlaps, including exact empty/full grids. Dimensions are at least 3 in each direction and at most 262,144 squares for bounded local allocations. Occupancy accepts up to six decimal places from 0 through 1. Each weight/ratio is a `u32`; totals and quota arithmetic use wider integers.
-
-### Reproducibility contract
-
-The generator is **SplitMix64**, using [Vigna's public-domain 2015 reference](https://prng.di.unimi.it/splitmix64.c), with `VirtualLife sampling v1` bounded draws in `src/experiment.rs`. The original action protocol is separately labelled **random v1**. Seed is the initial unsigned 64-bit state. Each raw draw adds `0x9e3779b97f4a7c15` with wrapping arithmetic, then mixes with shifts 30/27/31 and multipliers `0xbf58476d1ce4e5b9` and `0x94d049bb133111eb`. Reference output vectors are tested. This generator is for reproducible experiments, not security.
-
-To draw uniformly below N, discard raw values below `(-N modulo 2^64) modulo N`, then return the accepted value modulo N. Rejected raw values advance the generator. This avoids remainder bias. Initialization draws once per Fisher–Yates iteration (plus any rejected raw values), from the last square through index 1, even for an empty population. Quota calculation and ID allocation consume no randomness. The same generator then continues into ticks. Iterate occupied starting squares in row-major order: draw one weighted action per individual, then draw a destination only for move/copy. Neighbours have the stable order northwest, north, northeast, west, east, southwest, south, southeast, with wraparound. Failed destinations never retry and still consume their original draws. Newborns enter only the next tick's iteration.
-
-Record the seed, effective configuration, generator/protocol name and crate version with results; keep the source commit/Cargo.lock for exact reproduction. The same configuration and code produces the same fixed-tick world and accepted-event totals with observation disabled, enabled, saturated, disconnected or sampled differently. Rendering, pacing and the HTTP adapter's OS-random run identity consume no simulation draws. A seed alone does not promise identical outcomes across arbitrary code or dependency changes. Live samples are bounded and incomplete, not a saved trajectory.
-
-### Limits of the local rule
-
-Action selection reads starting occupancy through `neighbors` and `agent_at`. The approved crowding rule considers whether a square is empty, not its occupant's properties or condition. Transition resolution and presentation do not need duplicate implementations. No neighbourhood framework or interaction matrix is introduced.
-
-Further neighbour-property-dependent choices, resources, energy economy, mutation and interaction matrices remain outside the model. Choose the question and exact rule with worked examples before adding another interaction.

@@ -14,6 +14,17 @@ pub struct Automaton {
     pub move_crowding_gain: u8,
 }
 
+impl Default for Automaton {
+    fn default() -> Self {
+        Self {
+            initial: ActionState::Wait,
+            rows: [Weights::default(); 4],
+            copy_damage_gain: 0,
+            move_crowding_gain: 0,
+        }
+    }
+}
+
 impl Automaton {
     pub fn base_weights(self, previous: Option<ActionState>) -> Weights {
         self.rows[previous.unwrap_or(self.initial).index()]

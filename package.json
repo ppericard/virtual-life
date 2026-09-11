@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check web/automaton.js && node --check tests/browser/automaton.spec.js && node --check web/app.js && node --check web/display.js && node --check playwright.config.js && node --check tests/browser/fixtures.js && node --check tests/browser/autonomous.spec.js && node --check tests/browser/viewer.spec.js && node --check tests/browser/layout.spec.js && node --check tests/browser/workspace.spec.js && node --check tests/browser/presets.spec.js && node --check tests/browser/shutdown.spec.js && node --check tests/browser/restart.spec.js && node --check tests/browser/seeded-restart.spec.js && node --test tests/display.test.js tests/automaton-display.test.js",
+    "check": "node scripts/check-js.mjs",
     "test:e2e": "cargo build --locked --features web --bin web && playwright test"
   },
   "devDependencies": {

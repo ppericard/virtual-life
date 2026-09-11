@@ -1,3 +1,4 @@
+mod common;
 use virtual_life::{
     engine::{
         Action, Agent, FAILURE_LIMIT, FailureReason, Maintenance, Position, Proposal, Weights,
@@ -11,7 +12,7 @@ fn agent(id: u64, integrity: u32) -> Agent {
     Agent {
         id,
         integrity,
-        weights: Weights([2, 4, 1, 3]),
+        automaton: common::machine(Weights([2, 4, 1, 3])),
         ..Agent::default()
     }
 }
@@ -67,7 +68,7 @@ fn effective_upkeep_exact_zero_skips_all_draws_and_cannot_be_repaired() {
             let mut agents = vec![(
                 p(0, 0),
                 Agent {
-                    weights,
+                    automaton: common::machine(weights),
                     ..agent(1, 2)
                 },
             )];
@@ -443,7 +444,7 @@ fn failed_batches_leave_both_buffers_integrity_ids_and_failure_evidence_unchange
 #[test]
 fn children_receive_fresh_integrity_but_inherit_properties_and_act_next_tick() {
     let parent = Agent {
-        weights: Weights([0, 0, 1, 0]),
+        automaton: common::machine(Weights([0, 0, 1, 0])),
         ..agent(71, 8)
     };
     let mut w = world(&[(p(2, 2), parent)]);
@@ -456,7 +457,7 @@ fn children_receive_fresh_integrity_but_inherit_properties_and_act_next_tick() {
         w.cells()
             .iter()
             .flatten()
-            .all(|a| a.weights == parent.weights)
+            .all(|a| a.automaton == parent.automaton)
     );
     assert_eq!(w.totals().creations, 1);
     assert_eq!(
@@ -483,7 +484,7 @@ fn children_receive_fresh_integrity_but_inherit_properties_and_act_next_tick() {
 #[test]
 fn policy_skips_upkeep_failures_but_draws_destination_before_affordability_check() {
     let mover = Agent {
-        weights: Weights([0, 1, 0, 0]),
+        automaton: common::machine(Weights([0, 1, 0, 0])),
         ..agent(2, 2)
     };
     let w = world(&[(p(0, 0), agent(1, 1)), (p(2, 2), mover)]);
@@ -542,7 +543,7 @@ fn full_neighborhood_transfers_copy_to_wait_before_neighbors_fail_upkeep() {
             (
                 p(index % 3, index / 3),
                 Agent {
-                    weights: Weights([0, 0, 1, 0]),
+                    automaton: common::machine(Weights([0, 0, 1, 0])),
                     ..agent(index as u64 + 1, if index == 0 { 3 } else { 1 })
                 },
             )
@@ -556,8 +557,8 @@ fn full_neighborhood_transfers_copy_to_wait_before_neighbors_fail_upkeep() {
     assert_eq!((events.failures, events.creations, w.count()), (8, 0, 1));
     assert_eq!(condition(&w, 1), 1); // Crowding upkeep only; no Copy wear.
     assert_eq!(
-        w.agent_at(p(0, 0)).unwrap().unwrap().weights,
-        Weights([0, 0, 1, 0])
+        w.agent_at(p(0, 0)).unwrap().unwrap().automaton,
+        common::machine(Weights([0, 0, 1, 0]))
     );
     assert!(experiment::proposals(&w, &mut random).is_empty()); // Remaining base upkeep is unaffordable.
 }
@@ -568,7 +569,7 @@ fn crowded_copy_keeps_all_eight_targets_and_draws_before_affordability() {
     let mut agents = vec![(
         p(0, 0),
         Agent {
-            weights: copy,
+            automaton: common::machine(copy),
             ..agent(1, 10)
         },
     )];
@@ -576,7 +577,7 @@ fn crowded_copy_keeps_all_eight_targets_and_draws_before_affordability() {
         agents.push((
             p(index % 3, index / 3),
             Agent {
-                weights: copy,
+                automaton: common::machine(copy),
                 ..agent(index as u64 + 1, 1)
             },
         ));
@@ -605,7 +606,13 @@ fn crowded_copy_keeps_all_eight_targets_and_draws_before_affordability() {
                 (8, 0, 0)
             );
             assert_eq!(fails.failures()[0].reason, FailureReason::CopyWear);
-            assert!(succeeds.cells().iter().flatten().all(|a| a.weights == copy));
+            assert!(
+                succeeds
+                    .cells()
+                    .iter()
+                    .flatten()
+                    .all(|a| a.automaton == common::machine(copy))
+            );
         }
     }
     assert_eq!(
@@ -711,7 +718,7 @@ fn configuration_rejects_invalid_survival_settings_and_grouping_ignores_integrit
                 web,
             )
             .unwrap();
-            let rules = parsed.config.experiment.unwrap().maintenance.unwrap();
+            let rules = parsed.config.experiment.unwrap().maintenance;
             assert_eq!(
                 (rules.crowding_threshold, rules.crowding_upkeep),
                 (threshold.parse().unwrap(), u32::MAX)
@@ -750,7 +757,10 @@ fn configuration_rejects_invalid_survival_settings_and_grouping_ignores_integrit
     let config = ExperimentConfig {
         width: 3,
         height: 3,
-        bundles: vec![Weights([1, 0, 0, 0]); 2],
+        automata: vec![Weights([1, 0, 0, 0]); 2]
+            .into_iter()
+            .map(common::machine)
+            .collect(),
         proportions: vec![1, 1],
         ..ExperimentConfig::default()
     };
@@ -823,8 +833,8 @@ fn generated_wear_runs_keep_identities_positive_integrity_and_order_independent_
             for agent in w.cells().iter().flatten() {
                 assert!(ids.insert(agent.id));
                 assert!((1..=10).contains(&agent.integrity));
-                if let Some(previous) = known.insert(agent.id, agent.weights) {
-                    assert_eq!(previous, agent.weights);
+                if let Some(previous) = known.insert(agent.id, agent.automaton) {
+                    assert_eq!(previous, agent.automaton);
                 }
             }
         }

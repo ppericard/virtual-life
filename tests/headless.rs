@@ -47,8 +47,8 @@ fn headless_labels_selected_actions_initial_agents_and_newborns_explicitly() {
                 "3",
                 "--occupancy",
                 occupancy,
-                "--bundles",
-                weights,
+                "--automata",
+                &format!("wait:{weights}/{weights}/{weights}/{weights}"),
                 "--proportions",
                 "1",
                 "--ticks",
@@ -91,8 +91,8 @@ fn repair_only_population_maintains_integrity_in_the_default_experiment() {
             "3",
             "--occupancy",
             "1",
-            "--bundles",
-            "0,0,0,1",
+            "--automata",
+            "wait:0,0,0,1/0,0,0,1/0,0,0,1/0,0,0,1",
             "--proportions",
             "1",
             "--ticks",
@@ -105,16 +105,12 @@ fn repair_only_population_maintains_integrity_in_the_default_experiment() {
     assert!(text.contains("tick=2 count=9"), "{text}");
     assert!(text.contains("repairs=18 failures=0"), "{text}");
     assert!(text.contains("integrity=10/10"), "{text}");
-    assert!(text.contains("protocol=wear-repair crowding v3"), "{text}");
+    assert!(text.contains("protocol=unit-action automaton v1"), "{text}");
     assert!(
         text.contains("crowding_threshold=5 crowding_upkeep=1"),
         "{text}"
     );
     assert!(text.contains("current_occupied_neighbors=8 next_tick_upkeep=2 (base=1 crowding=1; displayed neighborhood)"), "{text}");
-    assert!(
-        text.contains("Replaying wear-repair v1 requires its earlier code; crowding v2 requires --crowding-upkeep 0 with matching settings."),
-        "{text}"
-    );
 }
 
 #[test]
@@ -170,7 +166,7 @@ fn check_wide_crowding_output() {
 fn supported_headless_commands_report_the_fixture_and_extra_wait_ticks() {
     for (ticks, count) in [(0, 3), (5, 2), (8, 2)] {
         let output = Command::new(env!("CARGO_BIN_EXE_headless"))
-            .args(["--ticks", &ticks.to_string()])
+            .args(["--mode", "demo", "--ticks", &ticks.to_string()])
             .output()
             .unwrap();
         assert!(output.status.success());
@@ -206,45 +202,18 @@ fn invalid_headless_arguments_fail_with_a_message() {
 }
 
 #[test]
-fn autonomous_cli_records_reproducible_effective_settings_and_final_population() {
-    let arguments = [
-        "--mode",
-        "autonomous",
-        "--survival",
-        "random",
-        "--width",
-        "8",
-        "--height",
-        "6",
-        "--seed",
-        "1",
-        "--ticks",
-        "10",
-    ];
-    let first = Command::new(env!("CARGO_BIN_EXE_headless"))
-        .args(arguments)
+fn mixed_fsm_seed_one_preserves_the_pre_cleanup_world_and_failure_records() {
+    let output = Command::new(env!("CARGO_BIN_EXE_headless"))
+        .args([
+            "--width", "8", "--height", "6", "--seed", "1", "--ticks", "10",
+        ])
         .output()
         .unwrap();
-    let repeated = Command::new(env!("CARGO_BIN_EXE_headless"))
-        .args(arguments)
-        .output()
-        .unwrap();
-    assert!(first.status.success() && repeated.status.success());
-    assert_eq!(first.stdout, repeated.stdout);
-    let text = String::from_utf8(first.stdout).unwrap();
-    assert!(!text.contains("Replaying wear-repair v1"), "{text}");
-    for expected in [
-        "seed=1 generator=SplitMix64 / VirtualLife sampling v1",
-        "protocol=random v1",
-        "width=8 height=6 occupancy=0.300000 ticks=10 initial_count=14",
-        "group=0 weights=[4, 5, 1, 1] proportion=1 initial_count=4",
-        "tick=10 count=9",
-        "moves=28 creations=7 removals=12 value_changes=0",
-        "group=0 count=2",
-        "group=1 count=6",
-        "group=2 count=0",
-        "group=3 count=1",
-    ] {
-        assert!(text.contains(expected), "missing {expected} in {text}");
-    }
+    assert!(output.status.success());
+    let text = String::from_utf8(output.stdout)
+        .unwrap()
+        .replace("\r\n", "\n");
+    let (_, state) = text.split_once("tick=10 count=").unwrap();
+    let expected = include_str!("fixtures/fsm-seed1-tick10.txt").replace("\r\n", "\n");
+    assert_eq!(format!("tick=10 count={state}"), expected);
 }
