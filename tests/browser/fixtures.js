@@ -96,6 +96,17 @@ export const test = base.extend({
 });
 export { expect };
 
+// Resizing a container schedules a canvas repaint. Wait for that layout before
+// measuring click coordinates; Playwright can otherwise click stale offsets.
+export async function waitForGridFit(page) {
+  await expect.poll(() => page.locator('#grid').evaluate(canvas => {
+    const grid = canvas.getBoundingClientRect();
+    const frame = canvas.parentElement.getBoundingClientRect();
+    return grid.width <= frame.width + .1 && grid.height <= frame.height + .1
+      && (grid.width > frame.width - 1 || grid.height > frame.height - 1);
+  })).toBe(true);
+}
+
 // Follow the production disclosure controls; never force hidden UI into view.
 export async function openPanel(page, name) {
   const button = page.getByRole('button', {name, exact: true});

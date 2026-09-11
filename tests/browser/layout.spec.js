@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, waitForGridFit } from './fixtures.js';
 
 test.use({
   viewport: { width: 1680, height: 1000 },
@@ -47,11 +47,7 @@ async function checkSquares(page, sample) {
 
 async function checkLayout(page, width, portrait = false) {
   // Container resizing schedules one animation-frame repaint, including offline.
-  await expect.poll(()=>page.locator('#grid').evaluate(canvas=>{
-    const grid=canvas.getBoundingClientRect(), frame=canvas.parentElement.getBoundingClientRect();
-    return grid.width<=frame.width+.1 && grid.height<=frame.height+.1
-      && (grid.width>frame.width-1 || grid.height>frame.height-1);
-  })).toBe(true);
+  await waitForGridFit(page);
   const layout = await page.evaluate(() => {
     const rect = selector => document.querySelector(selector).getBoundingClientRect();
     const grid = rect('#grid'), world = rect('.world'), toolbar = rect('.toolbar'), frame = rect('#world-frame');

@@ -1,4 +1,4 @@
-import { test, expect, openPanel } from './fixtures.js';
+import { test, expect, openPanel, waitForGridFit } from './fixtures.js';
 
 test.use({serverArgs:['--mode','autonomous','--width','64','--height','48','--ticks','160','--tick-ms','0']});
 
@@ -8,6 +8,7 @@ test('the complete world and exact counts fit the first desktop and narrow scree
     await page.goto(server.url);
     await expect(page.locator('#tick')).toHaveText('0');
     await expect(page.getByRole('heading',{name:'VirtualLife',exact:true})).toBeVisible();
+    await waitForGridFit(page);
     const box=await page.locator('#grid').boundingBox();
     expect(box.y).toBeLessThan(240);
     expect(box.y+box.height).toBeLessThanOrEqual(size.height);
@@ -27,6 +28,7 @@ async function save(page, info, name) {
   await info.attach(name,{path,contentType:'image/png'});
 }
 async function clickSquare(page, sample, index) {
+  await waitForGridFit(page);
   const box=await page.locator('#grid').boundingBox(), pitch=540/Math.max(sample.width,sample.height);
   const scale=box.width/(16+sample.width*pitch);
   await page.locator('#grid').click({position:{x:(8+(index%sample.width+.5)*pitch)*scale,y:(8+(Math.floor(index/sample.width)+.5)*pitch)*scale}});
