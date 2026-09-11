@@ -1,4 +1,5 @@
 import { drawGrid, drawPlot, fitGrid, gridPosition, recordSample, renderReadouts, renderExperiment, groupLabel, sampleDescription } from './display.js';
+import {renderPresetAutomata} from './automaton.js';
 const byId = id => document.getElementById(id);
 const history = [];
 const runHeader = 'X-VirtualLife-Run';
@@ -69,8 +70,9 @@ function showPresetSelection(info) {
   const chosen = catalog.find(preset => preset.id === pendingPreset);
   byId('current-preset').textContent = `Current run: ${current?.name ?? 'Custom settings'}.`;
   byId('next-preset').textContent = `Next restart: ${chosen?.name ?? 'Custom settings'}. Use either Restart button to apply.`;
-  const groups = chosen ? chosen.bundles.map((weights, i) => ({weights, proportion: chosen.proportions[i]})) : info.groups;
-  byId('preset-weights').textContent = groups.map((group, i) => `${groupLabel(i)}: ${group.weights.join(' / ')} (proportion ${group.proportion})`).join('; ');
+  const groups = chosen ? chosen.bundles.map((weights, i) => ({weights, automaton:chosen.automata?.[i], proportion: chosen.proportions[i]})) : info.groups;
+  byId('preset-weights').textContent = groups.map((group, i) => `${groupLabel(i)}: ${group.automaton ? 'Inherited action graph' : group.weights.join(' / ')} (proportion ${group.proportion})`).join('; ');
+  renderPresetAutomata(byId('preset-automata'),groups);
 }
 function syncPresets(info) {
   const catalog = info?.presets ?? [];

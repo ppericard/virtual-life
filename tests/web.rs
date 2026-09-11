@@ -11,6 +11,90 @@ use virtual_life::{runner::Config, web};
 const GUARD: Duration = Duration::from_secs(10);
 
 #[test]
+fn automaton_presets_replay_the_engine_and_publish_exact_next_choice_tickets() {
+    use virtual_life::{
+        automaton::PRESETS,
+        experiment::{self, ExperimentConfig},
+    };
+    let settings = ExperimentConfig {
+        width: 9,
+        height: 7,
+        ..Default::default()
+    };
+    let server = Server::start(Config {
+        ticks: 3,
+        experiment: Some(settings.clone()),
+        ..Default::default()
+    });
+    let (mut run, _) = server.identified_snapshot();
+    for preset in &PRESETS {
+        let reply = server.restart(&run, &json!({"seed":"7","preset":preset.id}).to_string());
+        assert_eq!(parsed(&reply).0, 200);
+        run = identity(&reply);
+        let config = ExperimentConfig {
+            seed: 7,
+            automata: Some(vec![preset.machine]),
+            proportions: vec![1],
+            ..settings.clone()
+        };
+        let (mut world, mut random, _) = config.initialize().unwrap();
+        for tick in 0..=3 {
+            let sample = server.until(
+                &tick.to_string(),
+                if tick == 3 { "completed" } else { "paused" },
+            );
+            assert_eq!(
+                sample["experiment"]["groups"][0]["automaton"],
+                json!(preset.machine)
+            );
+            for (i, agent) in world.cells().iter().enumerate() {
+                let actual = &sample["cells"][i];
+                let Some(agent) = *agent else {
+                    assert!(actual.is_null());
+                    continue;
+                };
+                assert_eq!(actual["id"], agent.id.to_string());
+                assert_eq!(
+                    actual["state"],
+                    agent.last_action.unwrap_or(preset.machine.initial).label()
+                );
+                let upkeep = actual["next_tick_upkeep"]
+                    .as_str()
+                    .unwrap()
+                    .parse::<u64>()
+                    .unwrap();
+                if u64::from(agent.integrity) <= upkeep {
+                    assert!(actual["transition_tickets"].is_null());
+                } else {
+                    let neighbours = world
+                        .neighbors(virtual_life::engine::Position::new(i % 9, i / 9))
+                        .unwrap()
+                        .map(|p| world.agent_at(p).unwrap());
+                    assert_eq!(
+                        actual["transition_tickets"],
+                        json!(
+                            experiment::transition_weights(
+                                agent,
+                                (u64::from(agent.integrity) - upkeep) as u32,
+                                10,
+                                &neighbours
+                            )
+                            .map(|w| w.to_string())
+                        )
+                    );
+                }
+            }
+            if tick < 3 {
+                world
+                    .step(&experiment::proposals(&world, &mut random))
+                    .unwrap();
+                assert_eq!(server.control("step").0, 200);
+            }
+        }
+    }
+}
+
+#[test]
 fn api_reports_selected_actions_and_unacted_children_without_implying_success() {
     use virtual_life::{engine::Weights, experiment::ExperimentConfig};
     for (weights, occupancy, selected) in [
@@ -239,6 +323,7 @@ fn seeded_restart_replays_initial_and_fixed_tick_states_and_preserves_configurat
                 height: 6,
                 occupancy: 500_000,
                 seed: u64::MAX,
+                automata: None,
                 bundles: vec![Weights([1, 2, 3, 4]), Weights([4, 3, 2, 1])],
                 proportions: vec![3, 2],
                 maintenance,
@@ -374,6 +459,7 @@ fn every_preset_matches_ordinary_initialization_and_fixed_ticks_with_custom_sett
         runner::{Snapshot, Status},
     };
     let settings = ExperimentConfig {
+        automata: None,
         width: 9,
         height: 7,
         occupancy: 400_000,
@@ -437,7 +523,7 @@ fn every_preset_matches_ordinary_initialization_and_fixed_ticks_with_custom_sett
         ),
     ];
     let catalog = custom["experiment"]["presets"].as_array().unwrap();
-    assert_eq!(catalog.len(), 4);
+    assert_eq!(catalog.len(), 9);
     for (index, (id, name, bundles)) in expected.into_iter().enumerate() {
         assert_eq!(catalog[index]["id"], id);
         assert_eq!(catalog[index]["name"], name);

@@ -6,7 +6,7 @@ use crate::{
 };
 use std::time::Duration;
 
-pub const OPTIONS: &str = "[--mode demo|autonomous] [--survival wear-repair|random] [--ticks N] [--width N] [--height N] [--occupancy 0..1] [--bundles W,M,C,R;...] [--proportions N,...] [--seed N] [--integrity N] [--upkeep N] [--crowding-threshold 0..8] [--crowding-upkeep N] [--move-wear N] [--copy-wear N] [--repair N]\nAutonomous defaults to wear-repair: fourth weight is Repair (Remove in random mode). Integrity defaults to 10, base upkeep 1, crowding threshold 5 with extra upkeep 1, extra move/copy wear 1/2, gross repair 4. Maintenance settings require wear-repair; all use nonnegative u32 integers, integrity must be positive, crowding threshold must be 0..8. Threshold 0 applies everywhere; crowding upkeep 0 disables the surcharge.";
+pub const OPTIONS: &str = "[--mode demo|autonomous] [--survival wear-repair|random] [--ticks N] [--width N] [--height N] [--occupancy 0..1] [--bundles W,M,C,R;... | --automaton-preset mixed|movement-runs|repair-cycles|copy-bursts|wait-cycles | --automata INITIAL[~COPY_DAMAGE_GAIN,MOVE_CROWDING_GAIN]:W,M,C,R/W,M,C,R/W,M,C,R/W,M,C,R;...] [--proportions N,...] [--seed N] [--integrity N] [--upkeep N] [--crowding-threshold 0..8] [--crowding-upkeep N] [--move-wear N] [--copy-wear N] [--repair N]\nAutonomous defaults to wear-repair: fourth weight is Repair (Remove in random mode). Integrity defaults to 10, base upkeep 1, crowding threshold 5 with extra upkeep 1, extra move/copy wear 1/2, gross repair 4. Maintenance settings require wear-repair; all use nonnegative u32 integers, integrity must be positive, crowding threshold must be 0..8. Threshold 0 applies everywhere; crowding upkeep 0 disables the surcharge.";
 
 pub struct Launch {
     pub config: Config,
@@ -21,6 +21,8 @@ pub fn parse(arguments: impl IntoIterator<Item = String>, web: bool) -> Result<L
     let mut model_options = false;
     let mut maintenance_options = false;
     let mut custom_bundles = false;
+    let mut custom_automata = false;
+    let mut custom_proportions = false;
     let mut survival = "wear-repair".to_owned();
     let mut ticks = None;
     let mut interval = None;
@@ -117,8 +119,42 @@ pub fn parse(arguments: impl IntoIterator<Item = String>, web: bool) -> Result<L
                 model_options = true;
                 custom_bundles = true;
             }
+            "--automata" => {
+                if custom_automata {
+                    return Err("provide automata only once".into());
+                }
+                experiment.automata = Some(
+                    value
+                        .split(';')
+                        .map(crate::automaton::Automaton::parse)
+                        .collect::<Result<_, _>>()?,
+                );
+                model_options = true;
+                custom_automata = true;
+            }
+            "--automaton-preset" => {
+                if custom_automata {
+                    return Err("provide automata only once".into());
+                }
+                let machines = if value == "mixed" {
+                    crate::automaton::PRESETS
+                        .iter()
+                        .map(|preset| preset.machine)
+                        .collect::<Vec<_>>()
+                } else {
+                    vec![
+                        crate::automaton::find(&value)
+                            .ok_or("unknown automaton preset")?
+                            .machine,
+                    ]
+                };
+                experiment.automata = Some(machines);
+                model_options = true;
+                custom_automata = true;
+            }
             "--proportions" => {
                 experiment.proportions = list(&value)?;
+                custom_proportions = true;
                 model_options = true;
             }
             "--port" if web => port = u16::try_from(integer()?).map_err(|_| "invalid port")?,
@@ -132,6 +168,12 @@ pub fn parse(arguments: impl IntoIterator<Item = String>, web: bool) -> Result<L
             }
             _ => return Err(format!("unknown argument {argument}; use --help")),
         }
+    }
+    if custom_bundles && custom_automata {
+        return Err("choose either --bundles or --automata".into());
+    }
+    if !custom_proportions && let Some(machines) = &experiment.automata {
+        experiment.proportions = vec![1; machines.len()];
     }
     match mode.as_str() {
         "autonomous" => {
@@ -206,9 +248,11 @@ pub fn describe(config: &Config) -> Result<(), String> {
             }
         );
         if let Some(rules) = experiment.maintenance {
-            println!(
-                "Replaying wear-repair v1 requires its earlier code; crowding v2 requires --crowding-upkeep 0 with matching settings."
-            );
+            if experiment.automata.is_none() {
+                println!(
+                    "Replaying wear-repair v1 requires its earlier code; crowding v2 requires --crowding-upkeep 0 with matching settings."
+                );
+            }
             println!(
                 "integrity={} upkeep={} crowding_threshold={} crowding_upkeep={} move_wear={} copy_wear={} repair={}; initial and newborn integrity use the maximum",
                 rules.maximum,
@@ -230,6 +274,15 @@ pub fn describe(config: &Config) -> Result<(), String> {
             world.count()
         );
         for (index, group) in info.groups.iter().enumerate() {
+            if let Some(machine) = group.automaton {
+                println!(
+                    "group={index} automaton={} proportion={} initial_count={}",
+                    machine.specification(),
+                    group.proportion,
+                    group.initial_count
+                );
+                continue;
+            }
             println!(
                 "group={} weights={:?} proportion={} initial_count={}",
                 index, group.weights.0, group.proportion, group.initial_count

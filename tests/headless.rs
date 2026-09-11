@@ -1,6 +1,34 @@
 use std::process::Command;
 
 #[test]
+fn automaton_cli_reports_lossless_inherited_graphs_and_seeded_replay() {
+    let args = [
+        "--mode",
+        "autonomous",
+        "--automaton-preset",
+        "mixed",
+        "--ticks",
+        "3",
+    ];
+    let a = Command::new(env!("CARGO_BIN_EXE_headless"))
+        .args(args)
+        .output()
+        .unwrap();
+    let b = Command::new(env!("CARGO_BIN_EXE_headless"))
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(a.status.success());
+    assert_eq!(a.stdout, b.stdout);
+    let text = String::from_utf8(a.stdout).unwrap();
+    assert!(text.contains("unit-action automaton v1"));
+    for preset in virtual_life::automaton::PRESETS {
+        assert!(text.contains(&preset.machine.specification()));
+    }
+    assert!(text.contains("state="));
+}
+
+#[test]
 fn headless_labels_selected_actions_initial_agents_and_newborns_explicitly() {
     for (weights, occupancy, ticks, selected, creations) in [
         ("0,1,0,0", "1", "0", "not-yet-acted", "0"),

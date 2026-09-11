@@ -50,11 +50,13 @@ pub fn snapshot_json(sample: &Snapshot) -> Value {
             "generator": crate::experiment::GENERATOR, "version": env!("CARGO_PKG_VERSION"),
             "survival": info.config.survival(), "protocol": info.config.protocol(),
             "preset": presets::matching(info),
-            "presets": info.config.maintenance.is_some().then_some(&presets::CATALOG),
+            "presets": info.config.maintenance.is_some().then(presets::catalog),
             "maintenance": info.config.maintenance.map(|rules| json!({"maximum":rules.maximum,"upkeep":rules.upkeep,"crowding_threshold":rules.crowding_threshold,"crowding_upkeep":rules.crowding_upkeep,"move_wear":rules.move_wear,"copy_wear":rules.copy_wear,"repair":rules.repair})),
             "occupancy": format!("{}.{:06}", info.config.occupancy / 1_000_000, info.config.occupancy % 1_000_000),
             "groups": info.groups.iter().enumerate().map(|(index, group)| json!({
                 "weights": group.weights.0, "proportion": group.proportion.to_string(),
+                "automaton": group.automaton,
+                "automaton_name": group.automaton.map(|machine| crate::automaton::PRESETS.iter().find(|p|p.machine == machine).map_or("Custom automaton",|p|p.name)),
                 "initial_count": group.initial_count.to_string(), "count": counts[index].to_string()
             })).collect::<Vec<_>>()
         })
@@ -68,7 +70,7 @@ pub fn snapshot_json(sample: &Snapshot) -> Value {
                 if sample.experiment.is_none() {
                     return json!({"id": agent.id.to_string(), "value": agent.value.to_string()});
                 }
-                let group = sample.experiment.as_ref().map(|info| info.groups.iter().position(|g| g.weights == agent.weights).expect("configured group"));
+                let group = sample.experiment.as_ref().map(|info| info.groups.iter().position(|g| g.matches(&agent)).expect("configured group"));
                 let mut cell = json!({"id": agent.id.to_string(), "value": agent.value.to_string(), "weights": agent.weights.0, "group": group});
                 if let Some(rules) = sample.experiment.as_ref().and_then(|info| info.config.maintenance) {
                     let cost = crate::engine::upkeep_at(sample.width, sample.height, &sample.cells,
@@ -80,6 +82,21 @@ pub fn snapshot_json(sample: &Snapshot) -> Value {
                     cell["occupied_neighbors"] = json!(cost.occupied_neighbors);
                     cell["next_tick_upkeep"] = json!(cost.effective_upkeep.to_string());
                     cell["crowding_upkeep"] = json!(cost.crowding_upkeep);
+                    if let Some(machine) = agent.automaton {
+                        cell["state"] = json!(agent.last_action.unwrap_or(machine.initial).label());
+                        cell["integrity_after_upkeep"] = json!(u64::from(agent.integrity).saturating_sub(cost.effective_upkeep));
+                        cell["transition_tickets"] = if u64::from(agent.integrity) <= cost.effective_upkeep {
+                            Value::Null
+                        } else {
+                            let neighbours = crate::engine::neighbor_positions(sample.width,sample.height,
+                                crate::engine::Position::new(index % sample.width,index / sample.width))
+                                .expect("snapshot of a validated world")
+                                .map(|p|sample.cells[p.y * sample.width + p.x]);
+                            json!(crate::experiment::transition_weights(agent,
+                                (u64::from(agent.integrity)-cost.effective_upkeep) as u32,
+                                rules.maximum,&neighbours).map(|ticket| ticket.to_string()))
+                        };
+                    }
                 }
                 cell
             })
@@ -143,7 +160,7 @@ fn present<'de, D: serde::Deserializer<'de>, T: serde::Deserialize<'de>>(
 
 struct RestartChoice {
     seed: Option<u64>,
-    preset: Option<&'static presets::Preset>,
+    preset: Option<presets::Preset>,
 }
 
 fn restart_choice(bytes: &[u8]) -> Result<RestartChoice, &'static str> {
@@ -287,6 +304,11 @@ impl Api {
                 "text/javascript",
                 include_str!("../web/display.js"),
             ),
+            ("GET", "/automaton.js") => response(
+                StatusCode::OK,
+                "text/javascript",
+                include_str!("../web/automaton.js"),
+            ),
             ("GET", "/style.css") => {
                 response(StatusCode::OK, "text/css", include_str!("../web/style.css"))
             }
@@ -423,7 +445,7 @@ impl Api {
         &self,
         headers: &hyper::HeaderMap,
         seed: Option<u64>,
-        preset: Option<&presets::Preset>,
+        preset: Option<presets::Preset>,
     ) -> Response<Body> {
         let Ok(mut owned) = self.experiment.try_lock() else {
             return self.current_response(error(
@@ -463,7 +485,12 @@ impl Api {
                     "presets are available only in wear-repair mode",
                 ));
             }
-            settings.bundles = preset.bundles.map(crate::engine::Weights).to_vec();
+            settings.bundles = preset
+                .bundles
+                .into_iter()
+                .map(crate::engine::Weights)
+                .collect();
+            settings.automata = preset.automata;
             settings.proportions = preset.proportions.to_vec();
         }
         settings.seed = match seed {

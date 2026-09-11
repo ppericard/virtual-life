@@ -1,4 +1,5 @@
 // Display only: these functions never compute a simulation transition.
+import {renderAgentAutomaton} from './automaton.js';
 export const HISTORY_LIMIT = 128;
 const colors = ['#c89bc4', '#89baca', '#d6b36e', '#b4bf83', '#97bba0'];
 export function colorFor(id) { return colors[Number(BigInt(id) % BigInt(colors.length))]; }
@@ -25,7 +26,8 @@ export function inspectionText(sample, selected) {
     return `Agent ${selected} was removed by tick ${sample.tick}.`;
   }
   const agent = sample.cells[index];
-  const properties = sample.experiment ? `Group ${groupLabel(agent.group)} · ${sample.experiment.maintenance ? 'Base weights' : 'Weights'} (wait, move, copy, ${sample.experiment.maintenance ? 'repair' : 'remove'}): ${agent.weights.join(', ')}` : `Value ${agent.value}`;
+  const group = sample.experiment?.groups?.[agent.group];
+  const properties = group?.automaton ? `Group ${groupLabel(agent.group)} · ${group.automaton_name} · State ${agent.state}` : sample.experiment ? `Group ${groupLabel(agent.group)} · ${sample.experiment.maintenance ? 'Base weights' : 'Weights'} (wait, move, copy, ${sample.experiment.maintenance ? 'repair' : 'remove'}): ${agent.weights.join(', ')}` : `Value ${agent.value}`;
   const integrity = sample.experiment?.maintenance ? ` · Integrity ${agent.integrity}/${sample.experiment.maintenance.maximum} · Current occupied neighbours ${agent.occupied_neighbors}/8 · Next-tick effective upkeep ${agent.next_tick_upkeep} (base ${sample.experiment.maintenance.upkeep} + crowding ${agent.crowding_upkeep}; displayed neighbourhood)` : '';
   const action = sample.experiment?.maintenance ? ` · Last selected action: ${agent.last_action === null ? 'Not yet acted' : agent.last_action === undefined ? 'Unavailable' : `${agent.last_action} (success not implied)`}` : '';
   return `ID ${agent.id} · ${properties} · Position (${index % sample.width}, ${Math.floor(index / sample.width)})${integrity}${action}`;
@@ -35,6 +37,7 @@ export function renderReadouts(sample, selected, root = document) {
   for (const name of ['tick', 'count', 'status']) root.getElementById(name).textContent = sample[name];
   for (const [name, value] of Object.entries(sample.totals)) root.getElementById(name).textContent = value;
   root.getElementById('inspection').textContent = inspectionText(sample, selected);
+  renderAgentAutomaton(root.getElementById('agent-automaton'), sample, selected);
 }
 
 export function renderExperiment(sample) {
@@ -51,7 +54,9 @@ export function renderExperiment(sample) {
   const info = sample.experiment;
   document.getElementById('action-order').textContent = `Wait / move / copy / ${info.maintenance ? 'repair' : 'remove'}`;
   const rules = info.maintenance;
-  const compatibility = rules ? ' (Replaying wear-repair v1 requires its earlier code; crowding v2 requires --crowding-upkeep 0 with matching settings.)' : '';
+  const automata = info.groups.some(group=>group.automaton);
+  document.getElementById('choice-rule').textContent = automata ? 'The current state selects an inherited row. Damage adjusts Repair and Copy; crowding adjusts Move and transfers part of Copy to Wait. Inspect an agent for its next-choice graph. All eight destinations remain possible.' : 'Copy chance is scaled by the fraction of empty neighbours; the rest goes to Wait. Move/Copy still choose among all eight. Group weights stay inherited.';
+  const compatibility = rules && !automata ? ' (Replaying wear-repair v1 requires its earlier code; crowding v2 requires --crowding-upkeep 0 with matching settings.)' : '';
   const maintenance = rules ? ` Maximum, initial and newborn integrity ${rules.maximum}; base upkeep ${rules.upkeep}, plus ${rules.crowding_upkeep} when at least ${rules.crowding_threshold}/8 starting neighbours are occupied; extra move/copy wear ${rules.move_wear}/${rules.copy_wear}; gross repair ${rules.repair}. Upkeep precedes every action, including Repair. Repair costs the action opportunity. Failed spatial attempts pay wear.` : ' Random removal comparison; no integrity.';
   document.getElementById('configuration').textContent = `Seed ${info.seed} · ${info.generator} · crate ${info.version} · ${info.protocol}${compatibility} · occupancy ${info.occupancy} (rounded down to an exact count) · ${sample.end_tick} ticks.${maintenance} Illustrative settings, not calibrated biology.`;
   if (rules) {
@@ -65,7 +70,7 @@ export function renderExperiment(sample) {
   info.groups.forEach((group, index) => {
     const row = document.createElement('div'); row.className = 'group-row'; row.dataset.group = String(index);
     const swatch = document.createElement('span'); swatch.className = 'group-symbol'; swatch.style.backgroundColor = groupColor(index); swatch.style.color = groupInk(index); swatch.textContent = groupLabel(index);
-    const details = document.createElement('span'); details.textContent = `Group ${groupLabel(index)} · ${group.weights.join(' / ')} · ratio ${group.proportion} · initially ${group.initial_count}`;
+    const details = document.createElement('span'); details.textContent = `Group ${groupLabel(index)} · ${group.automaton ? group.automaton_name : group.weights.join(' / ')} · ratio ${group.proportion} · initially ${group.initial_count}`;
     const count = document.createElement('strong'); count.textContent = group.count; count.className = 'group-count';
     row.append(swatch, details, count); legend.append(row);
     const chip = document.createElement('span'); chip.className = 'group-chip';
