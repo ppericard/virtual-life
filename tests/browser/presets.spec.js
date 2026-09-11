@@ -16,7 +16,7 @@ test.use({serverArgs: ['--mode', 'autonomous', '--width', '8', '--height', '6', 
 test('preset choices stay pending until restart and synchronize both pages to the new run', async ({page, context, server}, info) => {
   await page.goto(server.url); await openPanel(page, 'New experiment');
   await expect(page.locator('#current-preset')).toHaveText('Current run: Mixed automata.');
-  for (const name of ['Mixed automata', 'Movement runs', 'Copy bursts', 'Repair cycles', 'Wait cycles']) {
+  for (const name of ['Mixed automata', 'Movement runs', 'Copy bursts', 'Repair cycles', 'Wait cycles', 'Open-world trial', 'Roamers', 'Burst copiers', 'Settlers']) {
     await expect(page.getByRole('button', {name, exact: true})).toBeVisible();
   }
   await expect(page.locator('#preset-controls')).toContainText('Integrity and crowding adjust their transition probabilities.');
@@ -83,6 +83,29 @@ test('preset choices stay pending until restart and synchronize both pages to th
   await page.setViewportSize({width:390, height:844});
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await save(page, info, 'preset-applied-narrow');
+});
+
+test('open-world trial previews three graphs and restarts with their inherited settings', async ({page, server}, info) => {
+  await page.goto(server.url); await openPanel(page, 'New experiment');
+  const before = await read(page, server);
+  await page.getByRole('button', {name:'Open-world trial', exact:true}).click();
+  await expect(page.locator('#next-preset')).toContainText('Next restart: Open-world trial.');
+  expect(await read(page, server)).toEqual(before);
+  await page.locator('#preset-controls summary').click();
+  for (const group of ['A', 'B', 'C']) {
+    await expect(page.locator('#preset-summary')).toContainText(`${group}: Inherited action graph (proportion 1)`);
+  }
+  await page.locator('#restart-seed').click();
+  await expect(page.locator('#current-preset')).toHaveText('Current run: Open-world trial.');
+  const after = await read(page, server);
+  const catalog = after.sample.experiment.presets.find(p => p.id === 'open-world');
+  expect(after.sample.experiment.groups.map(g => g.automaton)).toEqual(catalog.automata);
+  expect(after.sample.experiment.groups.map(g => g.automaton_name)).toEqual(['Roamers','Burst copiers','Settlers']);
+  expect(after.sample.experiment.maintenance).toEqual(before.sample.experiment.maintenance);
+  expect(after.sample.experiment.groups.map(g => g.proportion)).toEqual(['1','1','1']);
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await save(page, info, 'open-world-trial-narrow');
 });
 
 test.describe('custom preset recovery', () => {

@@ -36,6 +36,7 @@ Keep behaviour in the Rust chooser/engine. The browser draws the server's exact 
 cargo run --locked --features web --bin web
 cargo run --locked --no-default-features --bin headless -- --seed 42 --ticks 500
 cargo run --locked --features web --bin web -- --automaton-preset copy-bursts --width 64 --height 48 --occupancy 0.05
+cargo run --locked --features web --bin web -- --automaton-preset open-world --width 64 --height 48 --occupancy 0.05 --ticks 10000
 cargo run --locked --no-default-features --bin headless -- --mode demo --ticks 5
 ```
 
@@ -47,7 +48,7 @@ Default CLI mode is **autonomous**: 32 x 24, occupancy 0.3, mixed FSMs in equal 
 | `--width N --height N` | Each at least 3; total at most 262,144 squares |
 | `--occupancy 0..1` | At most six fractional digits; population rounds down |
 | `--seed N --ticks N` | Nonnegative u64 values |
-| `--automaton-preset mixed\|movement-runs\|repair-cycles\|copy-bursts\|wait-cycles` | Four graphs or a single graph |
+| `--automaton-preset NAME` | `mixed` (default four), `open-world` (three trial graphs), or a single graph: `movement-runs`, `repair-cycles`, `copy-bursts`, `wait-cycles`, `roamers`, `burst-copiers`, `settlers` |
 | `--automata "INITIAL[~COPY_GAIN,MOVE_GAIN]:ROW/ROW/ROW/ROW;..."` | Custom graphs; four Wait,Move,Copy,Repair weights per row |
 | `--proportions N,...` | One nonnegative u32 per graph; omitted means equal shares |
 | `--integrity N` | Positive u32 maximum, initial and newborn integrity (10) |
@@ -59,6 +60,16 @@ Default CLI mode is **autonomous**: 32 x 24, occupancy 0.3, mixed FSMs in equal 
 Initial state uses lowercase `wait`, `move`, `copy` or `repair`. Gains are 0..255 and default to zero. Every row must have a positive total; zero entries omit inherited arrows. Custom graph and preset options are mutually exclusive. Model options are invalid in demo mode. Retired `--bundles` and `--survival` options are rejected; use historical Git revisions to replay those models.
 
 Example deterministic cycle: `--automata "wait:0,1,0,0/0,0,0,1/1,0,0,0/1,0,0,0"`. Inherited arrows differ from effective probabilities: integrity, crowding and the no-choice fallback are defined in MODEL.
+
+### Comparing presets
+
+`examples/population_trace.rs` runs actual initialization, choice and resolution without pacing. It accepts the headless launch options and prints CSV at tick 0, every 10 ticks and the final tick. Columns contain population, cumulative starting-agent exposure (`agent_ticks`), successful moves, births, deaths, repairs and each group's count. It requires autonomous mode.
+
+```sh
+cargo run --locked --release --example population_trace -- --automaton-preset open-world --width 64 --height 48 --occupancy 0.05 --seed 1 --ticks 10000 > trace.csv
+```
+
+Compare candidates with the same dimensions, occupancy, maintenance, seeds and duration. Divide event-count differences by `agent_ticks` differences to compare activity per agent per tick over a chosen window. Check several seeds, including seeds not used for tuning, dense as well as sparse starts, and longer runs: early coexistence can end in domination by one type. Counts at the sampled ticks do not establish unsampled population extrema or indefinite survival. Keep survey outputs and findings with the experiment's PR, rather than committing generated traces.
 
 ## Worker and observation
 
@@ -82,7 +93,7 @@ Every allowed response carries an opaque 128-bit `X-VirtualLife-Run`, including 
 
 `experiment` is null for demo. Otherwise it includes seed, generator, protocol, version, occupancy, maintenance, groups and preset metadata. Each group has a complete `automaton`, name, proportion, initial count and count. Exact ordered graphs/proportions determine the preset label, not population outcomes. Cells reference their group and carry integrity, last selected action, effective source state, occupied neighbours, potential upkeep and `transition_tickets`. Fatal next upkeep has null tickets. Large integers and tickets are decimal strings; grid indices and u32 integrity remain numbers. The browser uses BigInt to label probabilities accurately.
 
-The catalog in `src/web/presets.rs` has `mixed-automata` and the four individual graph IDs listed above. It derives graphs from the single `src/automaton.rs` catalog. Omitting `preset` on restart retains the effective graphs/proportions; choosing one resets only those properties to equal shares. The UI previews choices without posting until restart. Custom CLI graphs stay custom and are preserved by seed-only replay.
+The catalog in `src/web/presets.rs` has `mixed-automata`, `open-world` and the seven individual graph IDs listed above. It derives graphs from `src/automaton.rs`, where the default four and trial three remain separate sets. Omitting `preset` on restart retains the effective graphs/proportions; choosing one resets only those properties to equal shares. The UI previews choices without posting until restart. Custom CLI graphs stay custom and are preserved by seed-only replay.
 
 ## Verification
 

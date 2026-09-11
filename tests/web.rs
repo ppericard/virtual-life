@@ -14,7 +14,7 @@ const GUARD: Duration = Duration::from_secs(10);
 #[test]
 fn automaton_presets_replay_the_engine_and_publish_exact_next_choice_tickets() {
     use virtual_life::{
-        automaton::PRESETS,
+        automaton::catalog,
         experiment::{self, ExperimentConfig},
     };
     let settings = ExperimentConfig {
@@ -28,7 +28,7 @@ fn automaton_presets_replay_the_engine_and_publish_exact_next_choice_tickets() {
         ..Default::default()
     });
     let (mut run, _) = server.identified_snapshot();
-    for preset in &PRESETS {
+    for preset in catalog() {
         let reply = server.restart(&run, &json!({"seed":"7","preset":preset.id}).to_string());
         assert_eq!(parsed(&reply).0, 200);
         run = identity(&reply);
@@ -47,6 +47,10 @@ fn automaton_presets_replay_the_engine_and_publish_exact_next_choice_tickets() {
             assert_eq!(
                 sample["experiment"]["groups"][0]["automaton"],
                 json!(preset.machine)
+            );
+            assert_eq!(
+                sample["experiment"]["groups"][0]["automaton_name"],
+                preset.name
             );
             for (i, agent) in world.cells().iter().enumerate() {
                 let actual = &sample["cells"][i];
@@ -499,13 +503,17 @@ fn every_preset_matches_ordinary_initialization_and_fixed_ticks_with_custom_sett
             .map(|p| p.machine)
             .collect::<Vec<_>>(),
     )];
-    expected.extend(
-        virtual_life::automaton::PRESETS
+    expected.push((
+        "open-world",
+        "Open-world trial",
+        virtual_life::automaton::TRIAL_PRESETS
             .iter()
-            .map(|p| (p.id, p.name, vec![p.machine])),
-    );
+            .map(|p| p.machine)
+            .collect(),
+    ));
+    expected.extend(virtual_life::automaton::catalog().map(|p| (p.id, p.name, vec![p.machine])));
     let catalog = custom["experiment"]["presets"].as_array().unwrap();
-    assert_eq!(catalog.len(), 5);
+    assert_eq!(catalog.len(), 9);
     for (index, (id, name, automata)) in expected.into_iter().enumerate() {
         assert_eq!(catalog[index]["id"], id);
         assert_eq!(catalog[index]["name"], name);
@@ -530,10 +538,11 @@ fn every_preset_matches_ordinary_initialization_and_fixed_ticks_with_custom_sett
                 .iter()
                 .map(|g| g["initial_count"].as_str().unwrap())
                 .collect::<Vec<_>>(),
-            if automata.len() == 4 {
-                vec!["7", "6", "6", "6"]
-            } else {
-                vec!["25"]
+            match automata.len() {
+                4 => vec!["7", "6", "6", "6"],
+                3 => vec!["9", "8", "8"],
+                1 => vec!["25"],
+                _ => panic!("unexpected preset size"),
             }
         );
         let reference = ExperimentConfig {
