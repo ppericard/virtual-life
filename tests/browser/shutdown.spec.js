@@ -2,7 +2,7 @@ import { test, expect } from './fixtures.js';
 
 for (const status of ['paused', 'running']) {
   test.describe(`Ctrl+C while ${status}`, () => {
-    test.use({ serverArgs: status === 'running' ? ['--running', '--tick-ms', '60000'] : [] });
+    test.use({ serverArgs: status === 'running' ? ['--mode','demo','--running', '--tick-ms', '60000'] : ['--mode','demo'] });
 
     test('the real server exits cleanly and releases its listener', async ({ server, request }) => {
       // An actual reply establishes that the server is ready, without a startup sleep.

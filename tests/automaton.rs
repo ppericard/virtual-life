@@ -63,7 +63,7 @@ fn a_sparse_unit_action_graph_controls_the_next_tick() {
 fn damage_and_crowding_use_exact_current_context_tickets() {
     let machine = Automaton::parse("repair:0,0,0,1/0,0,0,1/0,0,0,1/0,3,1,6").unwrap();
     let agent = Agent {
-        automaton: Some(machine),
+        automaton: machine,
         integrity: 10,
         ..Agent::default()
     };
@@ -115,11 +115,11 @@ fn damage_and_crowding_use_exact_current_context_tickets() {
         [0, 24000, 8000, 0]
     );
     let responsive = Agent {
-        automaton: Some(Automaton {
+        automaton: Automaton {
             copy_damage_gain: 2,
             move_crowding_gain: 2,
             ..machine
-        }),
+        },
         ..agent
     };
     assert_eq!(
@@ -135,7 +135,7 @@ fn graph_and_responses_define_inherited_identity_and_newborn_start() {
     let parent = Agent {
         id: 1,
         integrity: 10,
-        automaton: Some(machine),
+        automaton: machine,
         ..Agent::default()
     };
     let mut world = World::with_maintenance(
@@ -156,7 +156,7 @@ fn graph_and_responses_define_inherited_identity_and_newborn_start() {
             child.last_action,
             child.automaton
         ),
-        (2, 10, None, Some(machine))
+        (2, 10, None, machine)
     );
     let mut random = experiment::Random::new(1);
     let proposals = experiment::proposals(&world, &mut random);
@@ -189,7 +189,7 @@ fn graph_and_responses_define_inherited_identity_and_newborn_start() {
         width: 5,
         height: 5,
         occupancy: 400_000,
-        automata: Some(vec![a, b, a, c]),
+        automata: vec![a, b, a, c],
         proportions: vec![1; 4],
         ..ExperimentConfig::default()
     };
@@ -214,7 +214,7 @@ fn invalid_graphs_and_incompatible_modes_are_rejected() {
         assert!(Automaton::parse(text).is_err(), "{text}");
     }
     for args in [
-        vec!["--automaton-preset", "mixed"],
+        vec!["--mode", "demo", "--automaton-preset", "mixed"],
         vec![
             "--mode",
             "autonomous",
@@ -284,7 +284,7 @@ fn extreme_parameters_stay_bounded_and_damage_response_is_monotonic() {
         move_crowding_gain: 255,
     };
     let agent = Agent {
-        automaton: Some(machine),
+        automaton: machine,
         ..Agent::default()
     };
     for occupied in 0..=8 {
@@ -316,7 +316,7 @@ fn blocked_move_advances_the_graph_and_seeded_populations_preserve_invariants() 
         width: 3,
         height: 3,
         occupancy: 1_000_000,
-        automata: Some(vec![machine]),
+        automata: vec![machine],
         proportions: vec![1],
         ..Default::default()
     }
@@ -348,7 +348,7 @@ fn blocked_move_advances_the_graph_and_seeded_populations_preserve_invariants() 
             seed,
             width: 13,
             height: 9,
-            automata: Some(PRESETS.iter().map(|p| p.machine).collect()),
+            automata: PRESETS.iter().map(|p| p.machine).collect(),
             ..Default::default()
         };
         let (mut a, mut ra, info) = config.initialize().unwrap();
@@ -369,4 +369,14 @@ fn blocked_move_advances_the_graph_and_seeded_populations_preserve_invariants() 
                 && info.groups.iter().any(|g| g.matches(a))));
         }
     }
+}
+
+#[test]
+fn ordinary_launch_uses_the_mixed_fsm_population() {
+    let config = launch::parse(Vec::<String>::new(), false).unwrap().config;
+    assert_eq!(
+        config.experiment.unwrap().automata,
+        PRESETS.iter().map(|p| p.machine).collect::<Vec<_>>()
+    );
+    assert_eq!(config.ticks, 500);
 }

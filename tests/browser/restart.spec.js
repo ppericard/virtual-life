@@ -132,7 +132,7 @@ const runHeader = 'x-virtuallife-run';
 const runId = async (page, server) => (await page.request.get(`${server.url}/api/snapshot`)).headers()[runHeader];
 
 test.describe('approved automatic recovery', () => {
-  test.use({ serverArgs: ['--tick-ms', '60000'] });
+  test.use({ serverArgs: ['--mode', 'demo', '--tick-ms', '60000'] });
 
   test('same-tick restart clears selection and follows an already running new experiment', async ({ page, server }, info) => {
     await page.goto(server.url);

@@ -1,3 +1,4 @@
+mod common;
 use std::{
     collections::{HashMap, HashSet},
     sync::mpsc,
@@ -15,7 +16,7 @@ fn settings() -> ExperimentConfig {
     ExperimentConfig {
         width: 8,
         height: 6,
-        ..ExperimentConfig::random()
+        ..ExperimentConfig::default()
     }
 }
 
@@ -57,16 +58,18 @@ fn exact_tuple_identity_aggregates_proportions_and_preserves_zero_groups() {
         width: 3,
         height: 3,
         occupancy: 1_000_000,
-        bundles: vec![
+        automata: vec![
             Weights([1, 0, 0, 0]),
             Weights([1, 0, 0, 0]),
             Weights([2, 0, 0, 0]),
             Weights([0, 0, 0, 1]),
-        ],
+        ]
+        .into_iter()
+        .map(common::machine)
+        .collect(),
         proportions: vec![1, 2, 3, 0],
         seed: 1,
-        maintenance: None,
-        automata: None,
+        maintenance: Default::default(),
     };
     let (world, _, info) = config.initialize().unwrap();
     assert_eq!(info.groups.len(), 3); // Proportional, nonidentical tuples remain distinct.
@@ -76,11 +79,14 @@ fn exact_tuple_identity_aggregates_proportions_and_preserves_zero_groups() {
     );
     assert_eq!(info.counts(world.cells()), [5, 4, 0]);
     let (equivalent, _, _) = ExperimentConfig {
-        bundles: vec![
+        automata: vec![
             Weights([1, 0, 0, 0]),
             Weights([2, 0, 0, 0]),
             Weights([0, 0, 0, 1]),
-        ],
+        ]
+        .into_iter()
+        .map(common::machine)
+        .collect(),
         proportions: vec![3, 3, 0],
         ..config
     }
@@ -105,12 +111,15 @@ fn validates_dimensions_weights_proportions_and_fraction_boundaries() {
             ..settings()
         },
         ExperimentConfig {
-            bundles: vec![],
+            automata: vec![].into_iter().map(common::machine).collect(),
             proportions: vec![],
             ..settings()
         },
         ExperimentConfig {
-            bundles: vec![Weights([0; 4])],
+            automata: vec![Weights([0; 4])]
+                .into_iter()
+                .map(common::machine)
+                .collect(),
             proportions: vec![1],
             ..settings()
         },
@@ -127,7 +136,10 @@ fn validates_dimensions_weights_proportions_and_fraction_boundaries() {
     }
     assert!(
         ExperimentConfig {
-            bundles: (1..=9).map(|n| Weights([n, 0, 0, 0])).collect(),
+            automata: (1..=9)
+                .map(|n| Weights([n, 0, 0, 0]))
+                .map(common::machine)
+                .collect(),
             proportions: vec![1; 9],
             ..settings()
         }
@@ -150,7 +162,10 @@ fn validates_dimensions_weights_proportions_and_fraction_boundaries() {
         );
     }
     let maximum_weights = ExperimentConfig {
-        bundles: vec![Weights([u32::MAX; 4])],
+        automata: vec![Weights([u32::MAX; 4])]
+            .into_iter()
+            .map(common::machine)
+            .collect(),
         proportions: vec![u32::MAX],
         ..settings()
     };
@@ -172,21 +187,24 @@ fn validates_dimensions_weights_proportions_and_fraction_boundaries() {
             "1",
         ],
         vec!["--mode", "autonomous", "--proportions", "0,0,0,0"],
-        vec!["--width", "8"],
+        vec!["--mode", "demo", "--width", "8"],
     ] {
         assert!(launch::parse(arguments.into_iter().map(str::to_owned), false).is_err());
     }
 }
 
 #[test]
-fn copy_inherits_weights_and_stable_ids_newborns_first_choose_next_tick() {
+fn copy_inherits_graph_and_stable_ids_newborns_first_choose_next_tick() {
     let weights = Weights([0, 0, 1, 0]);
     let parent = Agent {
         id: 71,
-        weights,
+        integrity: 10,
+        automaton: common::machine(weights),
         ..Agent::default()
     };
-    let mut world = World::new(5, 5, &[(Position::new(2, 2), parent)]).unwrap();
+    let mut world =
+        World::with_maintenance(5, 5, &[(Position::new(2, 2), parent)], Default::default())
+            .unwrap();
     let mut random = Random::new(5);
     let proposals = experiment::proposals(&world, &mut random);
     assert_eq!(proposals.len(), 1);
@@ -196,9 +214,12 @@ fn copy_inherits_weights_and_stable_ids_newborns_first_choose_next_tick() {
         .cells()
         .iter()
         .flatten()
-        .map(|a| (a.id, a.weights))
+        .map(|a| (a.id, a.automaton))
         .collect();
-    assert!(identities.contains(&(71, weights)) && identities.contains(&(72, weights)));
+    assert!(
+        identities.contains(&(71, common::machine(weights)))
+            && identities.contains(&(72, common::machine(weights)))
+    );
     let next = experiment::proposals(&world, &mut random);
     assert_eq!(next.len(), 2);
     assert!(next.iter().any(|p| p.actor == 72));
@@ -208,12 +229,12 @@ fn copy_inherits_weights_and_stable_ids_newborns_first_choose_next_tick() {
 fn mixed_property_claims_fail_together_and_invalid_batches_reject_atomically() {
     let a = Agent {
         id: 1,
-        weights: Weights([0, 1, 0, 0]),
+        automaton: common::machine(Weights([0, 1, 0, 0])),
         ..Agent::default()
     };
     let b = Agent {
         id: 2,
-        weights: Weights([0, 0, 1, 0]),
+        automaton: common::machine(Weights([0, 0, 1, 0])),
         ..Agent::default()
     };
     let mut world =
@@ -240,32 +261,7 @@ fn mixed_property_claims_fail_together_and_invalid_batches_reject_atomically() {
 }
 
 #[test]
-fn forced_wait_remove_full_and_empty_populations_have_no_hidden_rules() {
-    for (weights, expected) in [
-        (Weights([1, 0, 0, 0]), 48),
-        (Weights([0, 0, 0, 1]), 0),
-        (Weights([0, 1, 0, 0]), 48),
-        (Weights([0, 0, 1, 0]), 48),
-    ] {
-        let config = ExperimentConfig {
-            occupancy: 1_000_000,
-            bundles: vec![weights],
-            proportions: vec![1],
-            ..settings()
-        };
-        let (mut world, mut random, info) = config.initialize().unwrap();
-        let initial = world.cells().to_vec();
-        for _ in 0..50 {
-            world
-                .step(&experiment::proposals(&world, &mut random))
-                .unwrap();
-        }
-        assert_eq!(world.count(), expected);
-        assert_eq!(info.counts(world.cells()), [expected]);
-        if expected > 0 {
-            assert_eq!(world.cells(), initial);
-        }
-    }
+fn empty_population_stays_empty_without_hidden_births() {
     let (mut world, mut random, info) = ExperimentConfig {
         occupancy: 0,
         ..settings()
@@ -284,20 +280,27 @@ fn forced_wait_remove_full_and_empty_populations_have_no_hidden_rules() {
 
 #[test]
 fn autonomous_zero_tick_request_returns_the_exact_initial_world() {
-    let configuration = settings();
-    let initial = configuration.initialize().unwrap().0;
-    let actual = Worker::spawn(
-        Config {
-            ticks: 0,
-            experiment: Some(configuration),
-            ..Config::default()
-        },
-        None,
-    )
-    .unwrap()
-    .join()
-    .unwrap();
-    assert_eq!(actual, initial);
+    let (done, finished) = mpsc::channel();
+    thread::spawn(move || {
+        let configuration = settings();
+        let initial = configuration.initialize().unwrap().0;
+        let actual = Worker::spawn(
+            Config {
+                ticks: 0,
+                experiment: Some(configuration),
+                ..Config::default()
+            },
+            None,
+        )
+        .unwrap()
+        .join()
+        .unwrap();
+        assert_eq!(actual, initial);
+        done.send(()).unwrap();
+    });
+    finished
+        .recv_timeout(Duration::from_secs(5))
+        .expect("zero-tick lifecycle exceeded deadlock guard");
 }
 
 #[test]
@@ -310,11 +313,28 @@ fn generated_runs_preserve_identity_inheritance_counts_and_permutation_independe
             .cells()
             .iter()
             .flatten()
-            .map(|a| (a.id, a.weights))
+            .map(|a| (a.id, a.automaton))
             .collect();
         for _ in 0..60 {
             let proposals = experiment::proposals(&world, &mut random);
-            assert_eq!(proposals.len(), world.count());
+            let survivors = world
+                .cells()
+                .iter()
+                .enumerate()
+                .filter(|(_, cell)| cell.is_some())
+                .filter(|(index, cell)| {
+                    let cost = virtual_life::engine::upkeep_at(
+                        world.width(),
+                        world.height(),
+                        world.cells(),
+                        Position::new(index % world.width(), index / world.width()),
+                        world.maintenance().unwrap(),
+                    )
+                    .unwrap();
+                    u64::from(cell.unwrap().integrity) > cost.effective_upkeep
+                })
+                .count();
+            assert_eq!(proposals.len(), survivors);
             let mut reverse = proposals.clone();
             reverse.reverse();
             let mut other = world.clone();
@@ -329,8 +349,8 @@ fn generated_runs_preserve_identity_inheritance_counts_and_permutation_independe
             let mut ids = HashSet::new();
             for agent in world.cells().iter().flatten() {
                 assert!(ids.insert(agent.id));
-                if let Some(previous) = known.insert(agent.id, agent.weights) {
-                    assert_eq!(previous, agent.weights);
+                if let Some(previous) = known.insert(agent.id, agent.automaton) {
+                    assert_eq!(previous, agent.automaton);
                 }
             }
             assert_eq!(
@@ -356,39 +376,37 @@ fn fixed_tick_results_ignore_observation_rate_backpressure_and_disconnect() {
         check_observation_independence(ExperimentConfig {
             width: 8,
             height: 6,
-            maintenance: Some(virtual_life::engine::Maintenance {
+            maintenance: virtual_life::engine::Maintenance {
                 crowding_upkeep: 0,
                 ..Default::default()
-            }),
+            },
             ..ExperimentConfig::default()
         });
         // Guaranteed survivors make the action-memory comparison non-vacuous.
         check_observation_independence(ExperimentConfig {
             width: 5,
             height: 5,
-            maintenance: Some(virtual_life::engine::Maintenance {
+            maintenance: virtual_life::engine::Maintenance {
                 upkeep: 0,
                 crowding_upkeep: 0,
                 move_wear: 0,
                 copy_wear: 0,
                 ..Default::default()
-            }),
+            },
             ..ExperimentConfig::default()
         });
         check_observation_independence(ExperimentConfig {
-            automata: Some(
-                virtual_life::automaton::PRESETS
-                    .iter()
-                    .map(|p| p.machine)
-                    .collect(),
-            ),
-            maintenance: Some(virtual_life::engine::Maintenance {
+            automata: virtual_life::automaton::PRESETS
+                .iter()
+                .map(|p| p.machine)
+                .collect(),
+            maintenance: virtual_life::engine::Maintenance {
                 upkeep: 0,
                 crowding_upkeep: 0,
                 move_wear: 0,
                 copy_wear: 0,
                 ..Default::default()
-            }),
+            },
             ..Default::default()
         });
         let _ = finished.send(());
@@ -396,228 +414,6 @@ fn fixed_tick_results_ignore_observation_rate_backpressure_and_disconnect() {
     completion
         .recv_timeout(Duration::from_secs(20))
         .expect("observation checks exceeded deadlock guard");
-}
-
-#[test]
-fn wear_crowding_v2_seed_one_records_exact_tick_ten_world_and_failures() {
-    use virtual_life::engine::ActionState::{Copy, Move, Repair, Wait};
-    let config = ExperimentConfig {
-        width: 8,
-        height: 6,
-        maintenance: Some(virtual_life::engine::Maintenance {
-            crowding_upkeep: 0,
-            ..Default::default()
-        }),
-        ..ExperimentConfig::default()
-    };
-    assert_eq!(config.protocol(), "wear-repair crowding v3");
-    let (mut world, mut random, info) = config.initialize().unwrap();
-    for _ in 0..10 {
-        world
-            .step(&experiment::proposals(&world, &mut random))
-            .unwrap();
-    }
-    let mut expected = vec![None; 48];
-    for (id, x, y, group, integrity) in [
-        (23, 3, 0, 0, 7),
-        (22, 6, 0, 1, 9),
-        (26, 7, 0, 1, 8),
-        (5, 2, 1, 1, 4),
-        (19, 0, 2, 0, 1),
-        (24, 1, 2, 3, 9),
-        (4, 2, 2, 0, 9),
-        (16, 3, 2, 1, 10),
-        (27, 4, 2, 2, 8),
-        (25, 5, 2, 2, 6),
-        (1, 3, 3, 0, 5),
-        (15, 4, 3, 1, 10),
-        (20, 5, 3, 1, 2),
-        (9, 6, 3, 2, 10),
-        (10, 1, 4, 2, 2),
-        (8, 4, 4, 1, 8),
-        (21, 6, 4, 1, 4),
-        (3, 7, 4, 2, 6),
-        (28, 1, 5, 2, 10),
-        (6, 5, 5, 1, 7),
-        (18, 7, 5, 1, 6),
-    ] {
-        expected[y * 8 + x] = Some(Agent {
-            id,
-            value: 0,
-            weights: config.bundles[group],
-            automaton: None,
-            integrity,
-            // Selected proposals captured from the unchanged #9 baseline.
-            last_action: match id {
-                5 | 25 | 3 => Some(Wait),
-                22 | 24 | 4 | 16 | 15 | 9 => Some(Repair),
-                10 => Some(Copy),
-                23 | 26 | 19 | 27 | 1 | 20 | 8 | 21 | 6 | 18 => Some(Move),
-                28 => None,
-                _ => unreachable!(),
-            },
-        });
-    }
-    assert_eq!(world.cells(), expected);
-    assert_eq!(world.tick(), 10);
-    assert_eq!(world.next_id(), 29);
-    assert_eq!(info.counts(world.cells()), [4, 10, 6, 1]);
-    assert_eq!(
-        world.totals(),
-        virtual_life::engine::Events {
-            moves: 34,
-            creations: 14,
-            removals: 7,
-            value_changes: 0,
-            repairs: 54,
-            failures: 7,
-        }
-    );
-    assert_eq!(world.discarded_failures(), 0);
-    use virtual_life::engine::FailureReason::{CopyWear, MoveWear, Upkeep};
-    let failures: Vec<_> = world
-        .failures()
-        .iter()
-        .map(|f| {
-            (
-                f.id,
-                f.tick,
-                f.position.x,
-                f.position.y,
-                f.reason,
-                f.integrity_before,
-                f.upkeep,
-                f.action_wear,
-            )
-        })
-        .collect();
-    assert_eq!(
-        failures,
-        [
-            (12, 5, 7, 2, MoveWear, 2, 1, 1),
-            (7, 5, 0, 3, MoveWear, 2, 1, 1),
-            (11, 5, 4, 5, MoveWear, 2, 1, 1),
-            (14, 7, 0, 4, Upkeep, 1, 1, 0),
-            (13, 8, 0, 0, Upkeep, 1, 1, 0),
-            (2, 8, 3, 5, Upkeep, 1, 1, 0),
-            (17, 10, 3, 1, CopyWear, 2, 1, 2),
-        ]
-    );
-}
-
-#[test]
-fn wear_crowding_v3_seed_one_records_exact_tick_ten_world_and_failure_costs() {
-    use virtual_life::engine::ActionState::{Copy, Move, Repair, Wait};
-    use virtual_life::engine::FailureReason::{CopyWear, MoveWear, Upkeep};
-    use virtual_life::engine::{Events, Failure};
-    let config = ExperimentConfig {
-        width: 8,
-        height: 6,
-        ..ExperimentConfig::default()
-    };
-    assert_eq!(config.protocol(), "wear-repair crowding v3");
-    let (mut world, mut random, info) = config.initialize().unwrap();
-    for _ in 0..10 {
-        world
-            .step(&experiment::proposals(&world, &mut random))
-            .unwrap();
-    }
-    let mut expected = vec![None; 48];
-    for (id, x, y, group, integrity) in [
-        (23, 3, 0, 0, 7),
-        (6, 5, 0, 1, 6),
-        (5, 2, 1, 1, 6),
-        (16, 3, 1, 1, 4),
-        (27, 7, 1, 1, 9),
-        (24, 0, 2, 3, 3),
-        (20, 4, 2, 1, 10),
-        (26, 0, 3, 2, 10),
-        (25, 2, 3, 1, 10),
-        (9, 6, 3, 2, 8),
-        (10, 1, 4, 2, 10),
-        (8, 3, 4, 1, 7),
-        (21, 6, 4, 1, 10),
-        (3, 7, 4, 2, 7),
-        (22, 6, 5, 1, 4),
-    ] {
-        expected[y * 8 + x] = Some(Agent {
-            id,
-            value: 0,
-            weights: config.bundles[group],
-            automaton: None,
-            integrity,
-            // Selected proposals captured from the unchanged #9 baseline.
-            last_action: match id {
-                23 | 16 | 24 | 8 | 22 => Some(Move),
-                6 | 3 => Some(Copy),
-                27 | 9 => Some(Wait),
-                5 | 20 | 26 | 25 | 10 | 21 => Some(Repair),
-                _ => unreachable!(),
-            },
-        });
-    }
-    assert_eq!(world.cells(), expected);
-    assert_eq!(
-        (world.tick(), world.next_id(), world.discarded_failures()),
-        (10, 28, 0)
-    );
-    assert_eq!(info.counts(world.cells()), [1, 9, 4, 1]);
-    assert_eq!(
-        world.totals(),
-        Events {
-            moves: 31,
-            creations: 13,
-            removals: 12,
-            value_changes: 0,
-            repairs: 54,
-            failures: 12
-        }
-    );
-    let expected_failures: Vec<_> = [
-        (12, 5, 7, 2, MoveWear, 2, 2, 0, 1, 1),
-        (7, 5, 0, 3, MoveWear, 2, 2, 0, 1, 1),
-        (11, 5, 4, 5, MoveWear, 2, 3, 0, 1, 1),
-        (14, 7, 0, 4, Upkeep, 1, 2, 0, 1, 0),
-        (13, 8, 0, 0, Upkeep, 1, 2, 0, 1, 0),
-        (17, 8, 3, 1, Upkeep, 2, 5, 1, 2, 0),
-        (2, 8, 3, 5, Upkeep, 1, 3, 0, 1, 0),
-        (4, 9, 2, 2, Upkeep, 1, 5, 1, 2, 0),
-        (19, 10, 1, 3, Upkeep, 1, 5, 1, 2, 0),
-        (15, 10, 4, 3, CopyWear, 3, 3, 0, 1, 2),
-        (1, 10, 2, 4, MoveWear, 2, 4, 0, 1, 1),
-        (18, 10, 7, 5, MoveWear, 2, 3, 0, 1, 1),
-    ]
-    .into_iter()
-    .map(
-        |(
-            id,
-            tick,
-            x,
-            y,
-            reason,
-            integrity_before,
-            occupied_neighbors,
-            crowding_upkeep,
-            upkeep,
-            action_wear,
-        )| Failure {
-            id,
-            tick,
-            position: Position::new(x, y),
-            reason,
-            integrity_before,
-            occupied_neighbors,
-            base_upkeep: 1,
-            crowding_upkeep,
-            upkeep,
-            action_wear,
-        },
-    )
-    .collect();
-    assert_eq!(
-        world.failures().iter().copied().collect::<Vec<_>>(),
-        expected_failures
-    );
 }
 
 fn check_observation_independence(configuration: ExperimentConfig) {

@@ -1,6 +1,6 @@
 //! Reproducible initialisation and action choice. Resolution stays in World::step.
 use crate::automaton::Automaton;
-use crate::engine::{Action, Agent, Maintenance, Position, Proposal, Weights, World};
+use crate::engine::{Action, Agent, Maintenance, Position, Proposal, World};
 
 pub const GENERATOR: &str = "SplitMix64 / VirtualLife sampling v1";
 // Vigna's 2015 public-domain reference: https://prng.di.unimi.it/splitmix64.c
@@ -12,12 +12,10 @@ pub struct ExperimentConfig {
     pub width: usize,
     pub height: usize,
     pub occupancy: u32,
-    pub bundles: Vec<Weights>,
-    /// When present, these inherited graphs replace the flat bundles.
-    pub automata: Option<Vec<Automaton>>,
+    pub automata: Vec<Automaton>,
     pub proportions: Vec<u32>,
     pub seed: u64,
-    pub maintenance: Option<Maintenance>,
+    pub maintenance: Maintenance,
 }
 
 impl Default for ExperimentConfig {
@@ -26,24 +24,20 @@ impl Default for ExperimentConfig {
             width: 32,
             height: 24,
             occupancy: 300_000,
-            bundles: vec![
-                Weights([2, 4, 1, 3]),
-                Weights([2, 2, 2, 4]),
-                Weights([4, 1, 1, 4]),
-                Weights([1, 5, 2, 2]),
-            ],
+            automata: crate::automaton::PRESETS
+                .iter()
+                .map(|p| p.machine)
+                .collect(),
             proportions: vec![1; 4],
-            automata: None,
             seed: 1,
-            maintenance: Some(Maintenance::default()),
+            maintenance: Maintenance::default(),
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Group {
-    pub weights: Weights,
-    pub automaton: Option<Automaton>,
+    pub automaton: Automaton,
     pub proportion: u64,
     pub initial_count: usize,
 }
@@ -51,7 +45,6 @@ pub struct Group {
 impl Group {
     pub fn matches(&self, agent: &Agent) -> bool {
         self.automaton == agent.automaton
-            && (self.automaton.is_some() || self.weights == agent.weights)
     }
 }
 
@@ -69,7 +62,7 @@ impl ExperimentInfo {
                 .groups
                 .iter()
                 .position(|g| g.matches(agent))
-                .expect("autonomous agents retain a configured property bundle");
+                .expect("autonomous agents retain a configured automaton");
             counts[group] += 1;
         }
         counts
@@ -107,40 +100,8 @@ impl Random {
 }
 
 impl ExperimentConfig {
-    pub fn random() -> Self {
-        Self {
-            bundles: vec![
-                Weights([4, 5, 1, 1]),
-                Weights([4, 3, 2, 1]),
-                Weights([6, 2, 1, 1]),
-                Weights([2, 6, 2, 1]),
-            ],
-            maintenance: None,
-            ..Self::default()
-        }
-    }
-
-    pub fn survival(&self) -> &'static str {
-        if self.maintenance.is_some() {
-            "wear-repair"
-        } else {
-            "random"
-        }
-    }
-    pub fn protocol(&self) -> &'static str {
-        if self.automata.is_some() {
-            "unit-action automaton v1"
-        } else if self.maintenance.is_some() {
-            "wear-repair crowding v3"
-        } else {
-            "random v1"
-        }
-    }
-
     pub fn initialize(&self) -> Result<(World, Random, ExperimentInfo), String> {
-        if let Some(rules) = self.maintenance {
-            rules.validate()?;
-        }
+        self.maintenance.validate()?;
         let size = self
             .width
             .checked_mul(self.height)
@@ -153,42 +114,19 @@ impl ExperimentConfig {
         if self.occupancy > OCCUPANCY_SCALE {
             return Err("occupancy must be between 0 and 1".into());
         }
-        if self.automata.is_some() && self.maintenance.is_none() {
-            return Err("automata require wear-repair survival".into());
-        }
-        let properties: Vec<_> = match &self.automata {
-            Some(machines) => machines
-                .iter()
-                .map(|&machine| (machine.base_weights(None), Some(machine)))
-                .collect(),
-            None => self
-                .bundles
-                .iter()
-                .map(|&weights| (weights, None))
-                .collect(),
-        };
-        if properties.is_empty() || properties.len() != self.proportions.len() {
-            return Err("provide one proportion per bundle and at least one bundle".into());
+        if self.automata.is_empty() || self.automata.len() != self.proportions.len() {
+            return Err("provide one proportion per automaton and at least one automaton".into());
         }
         let mut groups: Vec<Group> = Vec::new();
-        for ((weights, automaton), &proportion) in properties.into_iter().zip(&self.proportions) {
-            if let Some(machine) = automaton {
-                machine.validate()?;
-            }
-            if weights.0.iter().all(|&weight| weight == 0) {
-                return Err("each bundle must have a positive total weight".into());
-            }
-            if let Some(group) = groups
-                .iter_mut()
-                .find(|g| g.automaton == automaton && (automaton.is_some() || g.weights == weights))
-            {
+        for (&automaton, &proportion) in self.automata.iter().zip(&self.proportions) {
+            automaton.validate()?;
+            if let Some(group) = groups.iter_mut().find(|g| g.automaton == automaton) {
                 group.proportion = group
                     .proportion
                     .checked_add(u64::from(proportion))
                     .ok_or("proportion total overflow")?;
             } else {
                 groups.push(Group {
-                    weights,
                     automaton,
                     proportion: u64::from(proportion),
                     initial_count: 0,
@@ -201,7 +139,7 @@ impl ExperimentConfig {
             .ok_or("proportion total overflow")?;
         if groups.len() > 8 {
             return Err(
-                "at most eight distinct bundles are supported by the viewer palette".into(),
+                "at most eight distinct automata are supported by the viewer palette".into(),
             );
         }
         if total == 0 {
@@ -232,32 +170,28 @@ impl ExperimentConfig {
         let mut slots = squares.into_iter();
         for group in &groups {
             for _ in 0..group.initial_count {
-                occupied.push((slots.next().unwrap(), group.weights, group.automaton));
+                occupied.push((slots.next().unwrap(), group.automaton));
             }
         }
-        occupied.sort_by_key(|&(square, _, _)| square);
+        occupied.sort_by_key(|&(square, _)| square);
         let agents: Vec<_> = occupied
             .into_iter()
             .enumerate()
-            .map(|(index, (square, weights, automaton))| {
+            .map(|(index, (square, automaton))| {
                 (
                     Position::new(square % self.width, square / self.width),
                     Agent {
                         id: index as u64 + 1,
                         value: 0,
-                        weights,
                         automaton,
-                        integrity: self.maintenance.map_or(0, |rules| rules.maximum),
+                        integrity: self.maintenance.maximum,
                         last_action: None,
                     },
                 )
             })
             .collect();
         Ok((
-            match self.maintenance {
-                Some(rules) => World::with_maintenance(self.width, self.height, &agents, rules)?,
-                None => World::new(self.width, self.height, &agents)?,
-            },
+            World::with_maintenance(self.width, self.height, &agents, self.maintenance)?,
             random,
             ExperimentInfo {
                 config: self.clone(),
@@ -267,13 +201,10 @@ impl ExperimentConfig {
     }
 }
 
-/// Shared wear-repair transition weights in Wait/Move/Copy/Repair order.
-/// An inherited graph selects the source row and applies integrity responses;
-/// otherwise flat weights retain the original v3 choices. Crowding then reduces
-/// Copy and transfers its removed share to Wait, using starting occupants.
-/// Flat bundles preserve the v3 draw bound exactly. Graph tickets use a 1000-part
-/// damage fraction (rounded up, error < 0.001), keeping any damage observable.
-/// Maximum graph total is below 2^54; no floating point or per-agent allocation.
+/// Exact next-choice tickets in Wait/Move/Copy/Repair order.
+/// The source row is adjusted by damage and starting-neighbour occupancy.
+/// Damage uses 1000 parts, rounded up (error < 0.001). Total is below 2^54;
+/// no floating point or per-agent allocation. See MODEL.md for the equations.
 pub fn transition_weights(
     agent: Agent,
     integrity_after_upkeep: u32,
@@ -281,22 +212,15 @@ pub fn transition_weights(
     neighbours: &[Option<Agent>; 8],
 ) -> [u64; 4] {
     let occupied = neighbours.iter().flatten().count() as u64;
-    let properties = agent.automaton.map_or(agent.weights, |machine| {
-        machine.base_weights(agent.last_action)
-    });
-    let [mut wait, mut movement, mut copy, mut repair] = properties.0.map(u64::from);
-    if let Some(machine) = agent.automaton {
-        let damage = (u64::from(maximum.saturating_sub(integrity_after_upkeep)) * 1000)
-            .div_ceil(u64::from(maximum.max(1)));
-        wait *= 1000;
-        movement *= 1000;
-        copy *= 1000 + u64::from(machine.copy_damage_gain) * damage;
-        repair *= damage;
-    }
-    let movement_factor = 8 + occupied
-        * agent
-            .automaton
-            .map_or(0, |m| u64::from(m.move_crowding_gain));
+    let machine = agent.automaton;
+    let [wait, movement, copy, repair] = machine.base_weights(agent.last_action).0.map(u64::from);
+    let damage = (u64::from(maximum.saturating_sub(integrity_after_upkeep)) * 1000)
+        .div_ceil(u64::from(maximum.max(1)));
+    let wait = wait * 1000;
+    let movement = movement * 1000;
+    let copy = copy * (1000 + u64::from(machine.copy_damage_gain) * damage);
+    let repair = repair * damage;
+    let movement_factor = 8 + occupied * u64::from(machine.move_crowding_gain);
     let tickets = [
         8 * wait + occupied * copy,
         movement_factor * movement,
@@ -312,8 +236,11 @@ pub fn transition_weights(
 
 /// Each starting individual chooses once in row-major order. Wear-repair reduces
 /// Copy according to starting empty neighbours and transfers its lost share to Wait.
-/// Requires a validated autonomous world: every agent has a positive weight sum.
+/// Requires an autonomous world with validated maintenance and automata.
 pub fn proposals(world: &World, random: &mut Random) -> Vec<Proposal> {
+    let rules = world
+        .maintenance()
+        .expect("autonomous world requires maintenance");
     world
         .cells()
         .iter()
@@ -321,34 +248,27 @@ pub fn proposals(world: &World, random: &mut Random) -> Vec<Proposal> {
         .filter_map(|(index, cell)| {
             let agent = (*cell)?;
             let position = Position::new(index % world.width(), index / world.width());
-            let upkeep = world.maintenance().map(|rules| {
-                crate::engine::upkeep_at(
-                    world.width(),
-                    world.height(),
-                    world.cells(),
-                    position,
-                    rules,
-                )
-                .expect("validated autonomous world")
-            });
-            if upkeep.is_some_and(|cost| u64::from(agent.integrity) <= cost.effective_upkeep) {
-                return None; // Upkeep failure is resolved before action choice; no draw.
+            let cost = crate::engine::upkeep_at(
+                world.width(),
+                world.height(),
+                world.cells(),
+                position,
+                rules,
+            )
+            .expect("validated autonomous world");
+            if u64::from(agent.integrity) <= cost.effective_upkeep {
+                return None; // Fatal upkeep consumes no random draw.
             }
-            let tickets = if let Some(cost) = upkeep {
-                let neighbours = world
-                    .neighbors(position)
-                    .unwrap()
-                    .map(|position| world.agent_at(position).unwrap());
-                // The upkeep check above proves this difference is positive.
-                transition_weights(
-                    agent,
-                    (u64::from(agent.integrity) - cost.effective_upkeep) as u32,
-                    world.maintenance().unwrap().maximum,
-                    &neighbours,
-                )
-            } else {
-                agent.weights.0.map(u64::from)
-            };
+            let neighbours = world
+                .neighbors(position)
+                .unwrap()
+                .map(|position| world.agent_at(position).unwrap());
+            let tickets = transition_weights(
+                agent,
+                (u64::from(agent.integrity) - cost.effective_upkeep) as u32,
+                rules.maximum,
+                &neighbours,
+            );
             let total: u64 = tickets.iter().sum();
             let mut draw = random.below(total);
             let choice = tickets
@@ -372,8 +292,7 @@ pub fn proposals(world: &World, random: &mut Random) -> Vec<Proposal> {
                         Action::Create(target)
                     }
                 }
-                _ if world.maintenance().is_some() => Action::Repair,
-                _ => Action::Remove,
+                _ => Action::Repair,
             };
             Some(Proposal::new(agent.id, action))
         })
@@ -383,7 +302,7 @@ pub fn proposals(world: &World, random: &mut Random) -> Vec<Proposal> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::ActionState;
+    use crate::engine::{ActionState, Weights};
 
     #[test]
     fn crowding_selection_uses_exact_tickets_starting_occupancy_and_one_action_draw() {
@@ -455,7 +374,10 @@ mod tests {
                         position,
                         Agent {
                             id: 1,
-                            weights,
+                            automaton: Automaton {
+                                rows: [weights; 4],
+                                ..Default::default()
+                            },
                             integrity: 10,
                             last_action: current,
                             ..Agent::default()
@@ -466,7 +388,10 @@ mod tests {
                             Position::new(x, y),
                             Agent {
                                 id: index as u64 + 2,
-                                weights,
+                                automaton: Automaton {
+                                    rows: [weights; 4],
+                                    ..Default::default()
+                                },
                                 integrity: 1,
                                 ..Agent::default()
                             },
@@ -474,6 +399,13 @@ mod tests {
                     }
                     let world =
                         World::with_maintenance(5, 5, &agents, Maintenance::default()).unwrap();
+                    let damage = if empty <= 3 { 200 } else { 100 };
+                    let tickets = [
+                        tickets[0] * 1000,
+                        tickets[1] * 1000,
+                        tickets[2] * 1000,
+                        tickets[3] * damage,
+                    ];
                     let before = world.clone();
                     let mut seen = [false; 4];
                     for seed in 0..1024 {

@@ -67,7 +67,7 @@ test('initial pause and every MODEL transition, grid inspection, exact final sta
 });
 
 test.describe('pacing and gaps', () => {
-  test.use({serverArgs:['--tick-ms','600','--sample-every','2']});
+  test.use({serverArgs:['--mode','demo','--tick-ms','600','--sample-every','2']});
   test('pause/resume and sampled plot gaps in the real run', async ({page,server},info) => {
     await page.goto(server.url);
     await expect(page.locator('#tick')).toHaveText('0');
@@ -96,7 +96,7 @@ test.describe('pacing and gaps', () => {
 });
 
 test.describe('completion without a page', () => {
-  test.use({serverArgs:['--running','--tick-ms','0']});
+  test.use({serverArgs:['--mode','demo','--running','--tick-ms','0']});
   test('a new page reconnects to the completed experiment', async ({page,server}) => {
     await expect.poll(async () => (await (await page.request.get(`${server.url}/api/snapshot`)).json()).status).toBe('completed');
     await page.goto(server.url);
@@ -106,7 +106,7 @@ test.describe('completion without a page', () => {
 });
 
 test.describe('same-tick control reconciliation', () => {
-  test.use({serverArgs:['--tick-ms','60000']});
+  test.use({serverArgs:['--mode','demo','--tick-ms','60000']});
   test('a superseded receipt releases controls while pre-control reads stay ignored', async ({page,server}) => {
     await page.goto(server.url);
     await expect(page.getByRole('button', {name:'Resume',exact:true})).toBeEnabled();

@@ -1,4 +1,5 @@
 #![cfg(feature = "web")]
+mod common;
 use serde_json::{Value, json};
 use std::{
     io::{Read, Write},
@@ -33,7 +34,7 @@ fn automaton_presets_replay_the_engine_and_publish_exact_next_choice_tickets() {
         run = identity(&reply);
         let config = ExperimentConfig {
             seed: 7,
-            automata: Some(vec![preset.machine]),
+            automata: vec![preset.machine],
             proportions: vec![1],
             ..settings.clone()
         };
@@ -96,7 +97,7 @@ fn automaton_presets_replay_the_engine_and_publish_exact_next_choice_tickets() {
 
 #[test]
 fn api_reports_selected_actions_and_unacted_children_without_implying_success() {
-    use virtual_life::{engine::Weights, experiment::ExperimentConfig};
+    use virtual_life::experiment::ExperimentConfig;
     for (weights, occupancy, selected) in [
         ([1, 0, 0, 0], 1_000_000, "Wait"),
         ([0, 1, 0, 0], 1_000_000, "Move"),
@@ -110,7 +111,10 @@ fn api_reports_selected_actions_and_unacted_children_without_implying_success() 
                 width: 3,
                 height: 3,
                 occupancy,
-                bundles: vec![Weights(weights)],
+                automata: vec![virtual_life::engine::Weights(weights)]
+                    .into_iter()
+                    .map(common::machine)
+                    .collect(),
                 proportions: vec![1],
                 ..Default::default()
             }),
@@ -132,7 +136,7 @@ fn api_reports_selected_actions_and_unacted_children_without_implying_success() 
         let final_sample = server.until("1", "completed");
         assert_eq!(
             final_sample["experiment"]["protocol"],
-            "wear-repair crowding v3"
+            "unit-action automaton v1"
         );
         for cell in final_sample["cells"]
             .as_array()
@@ -154,7 +158,8 @@ fn api_reports_selected_actions_and_unacted_children_without_implying_success() 
             if selected == "Copy" { "1" } else { "0" }
         );
     }
-    for experiment in [None, Some(ExperimentConfig::random())] {
+    {
+        let experiment = None;
         let server = Server::start(Config {
             ticks: 0,
             experiment,
@@ -303,8 +308,8 @@ fn seeded_restart_replays_initial_and_fixed_tick_states_and_preserves_configurat
         experiment::ExperimentConfig,
     };
     for maintenance in [
-        None,
-        Some(Maintenance {
+        Maintenance::default(),
+        Maintenance {
             maximum: 17,
             upkeep: 2,
             crowding_threshold: 3,
@@ -312,7 +317,7 @@ fn seeded_restart_replays_initial_and_fixed_tick_states_and_preserves_configurat
             move_wear: 3,
             copy_wear: 4,
             repair: 6,
-        }),
+        },
     ] {
         let server = Server::start(Config {
             ticks: 12,
@@ -323,8 +328,10 @@ fn seeded_restart_replays_initial_and_fixed_tick_states_and_preserves_configurat
                 height: 6,
                 occupancy: 500_000,
                 seed: u64::MAX,
-                automata: None,
-                bundles: vec![Weights([1, 2, 3, 4]), Weights([4, 3, 2, 1])],
+                automata: vec![Weights([1, 2, 3, 4]), Weights([4, 3, 2, 1])]
+                    .into_iter()
+                    .map(common::machine)
+                    .collect(),
                 proportions: vec![3, 2],
                 maintenance,
             }),
@@ -376,8 +383,8 @@ fn seeded_restart_replays_initial_and_fixed_tick_states_and_preserves_configurat
 }
 
 #[test]
-fn preset_restart_retains_current_bundles_for_seed_only_replay() {
-    use virtual_life::{engine::Weights, experiment::ExperimentConfig};
+fn preset_restart_retains_current_graphs_for_seed_only_replay() {
+    use virtual_life::experiment::ExperimentConfig;
     let server = Server::start(Config {
         ticks: 3,
         sample_every: 7,
@@ -393,7 +400,7 @@ fn preset_restart_retains_current_bundles_for_seed_only_replay() {
     let (run, old) = server.identified_snapshot();
     let reply = server.restart(
         &run,
-        r#"{"seed":"18446744073709551615","preset":"moderate-movement"}"#,
+        r#"{"seed":"18446744073709551615","preset":"movement-runs"}"#,
     );
     assert_eq!(parsed(&reply).0, 200, "{reply}");
     let next = identity(&reply);
@@ -401,24 +408,18 @@ fn preset_restart_retains_current_bundles_for_seed_only_replay() {
     let initial = parsed(&reply).1;
     assert_eq!(initial["tick"], "0");
     assert_eq!(initial["status"], "paused");
-    assert_eq!(initial["experiment"]["preset"], "moderate-movement");
+    assert_eq!(initial["experiment"]["preset"], "movement-runs");
     assert_eq!(
         initial["experiment"]["maintenance"],
         old["experiment"]["maintenance"]
     );
-    let bundles = vec![
-        Weights([42, 4, 4, 30]),
-        Weights([34, 10, 4, 32]),
-        Weights([26, 16, 4, 34]),
-        Weights([18, 22, 4, 36]),
-    ];
     let expected = ExperimentConfig {
         width: 8,
         height: 6,
         occupancy: 500_000,
         seed: u64::MAX,
-        bundles,
-        proportions: vec![1; 4],
+        automata: vec![virtual_life::automaton::PRESETS[0].machine],
+        proportions: vec![1],
         ..Default::default()
     };
     let (mut world, mut random, _) = expected.initialize().unwrap();
@@ -442,7 +443,10 @@ fn preset_restart_retains_current_bundles_for_seed_only_replay() {
             None => assert!(cell.is_null()),
             Some(agent) => {
                 assert_eq!(cell["id"], agent.id.to_string());
-                assert_eq!(cell["weights"], json!(agent.weights.0));
+                assert_eq!(
+                    actual["experiment"]["groups"][cell["group"].as_u64().unwrap() as usize]["automaton"],
+                    json!(agent.automaton)
+                );
                 assert_eq!(cell["integrity"], agent.integrity);
             }
         }
@@ -459,14 +463,16 @@ fn every_preset_matches_ordinary_initialization_and_fixed_ticks_with_custom_sett
         runner::{Snapshot, Status},
     };
     let settings = ExperimentConfig {
-        automata: None,
         width: 9,
         height: 7,
         occupancy: 400_000,
         seed: u64::MAX,
-        bundles: vec![Weights([1, 2, 3, 4])],
+        automata: vec![Weights([1, 2, 3, 4])]
+            .into_iter()
+            .map(common::machine)
+            .collect(),
         proportions: vec![7],
-        maintenance: Some(Maintenance {
+        maintenance: Maintenance {
             maximum: 17,
             upkeep: 2,
             crowding_threshold: 3,
@@ -474,7 +480,7 @@ fn every_preset_matches_ordinary_initialization_and_fixed_ticks_with_custom_sett
             move_wear: 3,
             copy_wear: 4,
             repair: 6,
-        }),
+        },
     };
     let server = Server::start(Config {
         ticks: 8,
@@ -485,50 +491,29 @@ fn every_preset_matches_ordinary_initialization_and_fixed_ticks_with_custom_sett
     });
     let (mut run, custom) = server.identified_snapshot();
     assert!(custom["experiment"]["preset"].is_null());
-    let expected = [
-        (
-            "original",
-            "Original",
-            [[2, 4, 1, 3], [2, 2, 2, 4], [4, 1, 1, 4], [1, 5, 2, 2]],
-        ),
-        (
-            "moderate-movement",
-            "Moderate movement",
-            [
-                [42, 4, 4, 30],
-                [34, 10, 4, 32],
-                [26, 16, 4, 34],
-                [18, 22, 4, 36],
-            ],
-        ),
-        (
-            "wide-movement-range",
-            "Wide movement range",
-            [
-                [42, 4, 4, 30],
-                [31, 12, 4, 33],
-                [20, 20, 4, 36],
-                [9, 28, 4, 39],
-            ],
-        ),
-        (
-            "lower-copying",
-            "Lower copying",
-            [
-                [44, 4, 2, 30],
-                [33, 12, 2, 33],
-                [22, 20, 2, 36],
-                [11, 28, 2, 39],
-            ],
-        ),
-    ];
+    let mut expected = vec![(
+        "mixed-automata",
+        "Mixed automata",
+        virtual_life::automaton::PRESETS
+            .iter()
+            .map(|p| p.machine)
+            .collect::<Vec<_>>(),
+    )];
+    expected.extend(
+        virtual_life::automaton::PRESETS
+            .iter()
+            .map(|p| (p.id, p.name, vec![p.machine])),
+    );
     let catalog = custom["experiment"]["presets"].as_array().unwrap();
-    assert_eq!(catalog.len(), 9);
-    for (index, (id, name, bundles)) in expected.into_iter().enumerate() {
+    assert_eq!(catalog.len(), 5);
+    for (index, (id, name, automata)) in expected.into_iter().enumerate() {
         assert_eq!(catalog[index]["id"], id);
         assert_eq!(catalog[index]["name"], name);
-        assert_eq!(catalog[index]["bundles"], json!(bundles));
-        assert_eq!(catalog[index]["proportions"], json!([1, 1, 1, 1]));
+        assert_eq!(catalog[index]["automata"], json!(automata));
+        assert_eq!(
+            catalog[index]["proportions"],
+            json!(vec![1; automata.len()])
+        );
         let reply = server.restart(
             &run,
             &json!({"seed":u64::MAX.to_string(),"preset":id}).to_string(),
@@ -545,11 +530,15 @@ fn every_preset_matches_ordinary_initialization_and_fixed_ticks_with_custom_sett
                 .iter()
                 .map(|g| g["initial_count"].as_str().unwrap())
                 .collect::<Vec<_>>(),
-            ["7", "6", "6", "6"]
+            if automata.len() == 4 {
+                vec!["7", "6", "6", "6"]
+            } else {
+                vec!["25"]
+            }
         );
         let reference = ExperimentConfig {
-            bundles: bundles.map(Weights).to_vec(),
-            proportions: vec![1; 4],
+            proportions: vec![1; automata.len()],
+            automata,
             ..settings.clone()
         };
         let (mut world, mut random, info) = reference.initialize().unwrap();
@@ -602,40 +591,10 @@ fn every_preset_matches_ordinary_initialization_and_fixed_ticks_with_custom_sett
 }
 
 #[test]
-fn old_moderate_preset_bundles_remain_custom_and_replay_without_migration() {
-    use virtual_life::{engine::Weights, experiment::ExperimentConfig};
-    let server = Server::start(Config {
-        ticks: 1,
-        experiment: Some(ExperimentConfig {
-            width: 8,
-            height: 6,
-            occupancy: 500_000,
-            bundles: vec![
-                Weights([34, 4, 12, 30]),
-                Weights([26, 10, 12, 32]),
-                Weights([18, 16, 12, 34]),
-                Weights([10, 22, 12, 36]),
-            ],
-            proportions: vec![1; 4],
-            seed: 42,
-            ..Default::default()
-        }),
-        ..Config::default()
-    });
-    let (run, initial) = server.identified_snapshot();
-    assert!(initial["experiment"]["preset"].is_null());
-    assert_eq!(server.control("step").0, 200);
-    server.until("1", "completed");
-    let replay = server.restart(&run, r#"{"seed":"42"}"#);
-    assert_ne!(identity(&replay), run);
-    // The entire initial state, including custom weights/proportions and label, survives replay.
-    assert_eq!(parsed(&replay), (200, initial));
-}
-
-#[test]
 fn presets_reject_unsupported_modes_and_require_exact_properties_for_the_current_label() {
     use virtual_life::experiment::ExperimentConfig;
-    for experiment in [None, Some(ExperimentConfig::random())] {
+    {
+        let experiment = None;
         let server = Server::start(Config {
             ticks: 0,
             experiment,
@@ -645,12 +604,15 @@ fn presets_reject_unsupported_modes_and_require_exact_properties_for_the_current
         assert!(initial["experiment"]["presets"].is_null());
         assert!(initial["experiment"]["preset"].is_null());
         assert_eq!(
-            parsed(&server.restart(&run, r#"{"seed":"0","preset":"original"}"#)).0,
+            parsed(&server.restart(&run, r#"{"seed":"0","preset":"mixed-automata"}"#)).0,
             409
         );
         assert_eq!(server.identified_snapshot(), (run, initial));
     }
-    for (proportions, preset) in [(vec![1; 4], Some("original")), (vec![1, 2, 1, 1], None)] {
+    for (proportions, preset) in [
+        (vec![1; 4], Some("mixed-automata")),
+        (vec![1, 2, 1, 1], None),
+    ] {
         let server = Server::start(Config {
             ticks: 0,
             experiment: Some(ExperimentConfig {
@@ -661,12 +623,12 @@ fn presets_reject_unsupported_modes_and_require_exact_properties_for_the_current
         });
         let (run, initial) = server.identified_snapshot();
         assert_eq!(initial["experiment"]["preset"], json!(preset));
-        let reply = server.restart(&run, r#"{"seed":"0","preset":"lower-copying"}"#);
+        let reply = server.restart(&run, r#"{"seed":"0","preset":"repair-cycles"}"#);
         assert_eq!(parsed(&reply).0, 200);
         assert_ne!(identity(&reply), run);
         assert_eq!(parsed(&reply).1["status"], "completed");
         assert_eq!(parsed(&reply).1["tick"], "0");
-        assert_eq!(parsed(&reply).1["experiment"]["preset"], "lower-copying");
+        assert_eq!(parsed(&reply).1["experiment"]["preset"], "repair-cycles");
     }
 }
 
@@ -704,7 +666,7 @@ fn restart_rejects_invalid_seeds_preconditions_and_demo_without_replacing_a_run(
             "POST",
             "/api/restart",
             &forbidden,
-            r#"{"seed":"1","preset":"original"}"#,
+            r#"{"seed":"1","preset":"mixed-automata"}"#,
         );
         assert!(
             reply.starts_with("HTTP/1.1 403") || reply.starts_with("HTTP/1.1 400"),
@@ -712,6 +674,7 @@ fn restart_rejects_invalid_seeds_preconditions_and_demo_without_replacing_a_run(
         );
     }
     for body in [
+        r#"["step"]"#,
         "{}",
         "{",
         r#"{"seed":1}"#,
@@ -729,7 +692,7 @@ fn restart_rejects_invalid_seeds_preconditions_and_demo_without_replacing_a_run(
         r#"{"seed":"1","extra":0}"#,
         r#"{"seed":null}"#,
         r#"{"random":null}"#,
-        r#"{"preset":"original"}"#,
+        r#"{"preset":"mixed-automata"}"#,
         r#"{"seed":"1","preset":""}"#,
         r#"{"seed":"1","preset":"unknown"}"#,
         r#"{"seed":"1","preset":"Original"}"#,
@@ -738,17 +701,17 @@ fn restart_rejects_invalid_seeds_preconditions_and_demo_without_replacing_a_run(
         r#"{"seed":"1","preset":true}"#,
         r#"{"seed":"1","preset":[]}"#,
         r#"{"seed":"1","preset":{}}"#,
-        r#"{"seed":"1","preset":"original","preset":"lower-copying"}"#,
-        r#"{"seed":"1","seed":"2","preset":"original"}"#,
-        r#"{"random":true,"random":true,"preset":"original"}"#,
-        r#"{"seed":null,"preset":"original"}"#,
-        r#"{"random":null,"preset":"original"}"#,
-        r#"{"seed":"1","random":true,"preset":"original"}"#,
-        r#"{"seed":"1","random":null,"preset":"original"}"#,
-        r#"{"random":false,"preset":"original"}"#,
-        r#"{"seed":"1","preset":"original","bundles":[]}"#,
-        r#"{"seed":"1","preset":"original","extra":0}"#,
-        r#"["1",null,"original"]"#,
+        r#"{"seed":"1","preset":"mixed-automata","preset":"repair-cycles"}"#,
+        r#"{"seed":"1","seed":"2","preset":"mixed-automata"}"#,
+        r#"{"random":true,"random":true,"preset":"mixed-automata"}"#,
+        r#"{"seed":null,"preset":"mixed-automata"}"#,
+        r#"{"random":null,"preset":"mixed-automata"}"#,
+        r#"{"seed":"1","random":true,"preset":"mixed-automata"}"#,
+        r#"{"seed":"1","random":null,"preset":"mixed-automata"}"#,
+        r#"{"random":false,"preset":"mixed-automata"}"#,
+        r#"{"seed":"1","preset":"mixed-automata","bundles":[]}"#,
+        r#"{"seed":"1","preset":"mixed-automata","extra":0}"#,
+        r#"["1",null,"mixed-automata"]"#,
         r#"["1"]"#,
     ] {
         assert_eq!(parsed(&server.restart(&run, body)).0, 400, "{body}");
@@ -766,7 +729,7 @@ fn restart_rejects_invalid_seeds_preconditions_and_demo_without_replacing_a_run(
                     "Origin: http://{}\r\nContent-Type: application/json\r\n{precondition}",
                     server.address
                 ),
-                r#"{"seed":"1","preset":"original"}"#
+                r#"{"seed":"1","preset":"mixed-automata"}"#
             ))
             .0,
             409
@@ -788,10 +751,7 @@ fn old_preconditions_are_checked_after_a_delayed_request_body() {
     for (path, body) in [
         ("/api/control", r#"{"command":"step"}"#),
         ("/api/restart", r#"{"seed":"2"}"#),
-        (
-            "/api/restart",
-            r#"{"seed":"2","preset":"wide-movement-range"}"#,
-        ),
+        ("/api/restart", r#"{"seed":"2","preset":"copy-bursts"}"#),
     ] {
         let (run, _) = server.identified_snapshot();
         let mut delayed = TcpStream::connect_timeout(&server.address, GUARD).unwrap();
@@ -800,7 +760,7 @@ fn old_preconditions_are_checked_after_a_delayed_request_body() {
         // Withhold the final body byte. This request cannot mutate before the
         // explicitly acknowledged replacement, regardless of thread scheduling.
         write!(delayed, "POST {path} HTTP/1.1\r\nHost: {}\r\nOrigin: http://{}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nX-VirtualLife-Run: {run}\r\n\r\n{}", server.address, server.address, body.len(), &body[..body.len()-1]).unwrap();
-        let reply = server.restart(&run, r#"{"seed":"42","preset":"lower-copying"}"#);
+        let reply = server.restart(&run, r#"{"seed":"42","preset":"repair-cycles"}"#);
         assert_eq!(parsed(&reply).0, 200);
         let next = identity(&reply);
         let initial = parsed(&reply).1;
@@ -969,6 +929,7 @@ fn rejects_foreign_origins_hosts_oversize_and_invalid_commands_without_mutation(
         server.address
     );
     for body in [
+        r#"["step"]"#,
         "{}",
         "{",
         "{\"command\":\"reset\"}",

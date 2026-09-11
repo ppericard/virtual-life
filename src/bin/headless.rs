@@ -5,7 +5,7 @@ fn run() -> Result<(), String> {
     let launch = launch::parse(std::env::args().skip(1), false)?;
     if launch.help {
         println!(
-            "Usage: headless {}\nDemo defaults to 5 ticks; autonomous defaults to 500. Quote bundles containing semicolons.",
+            "Usage: headless {}\nDemo defaults to 5 ticks; autonomous defaults to 500. Quote graphs containing semicolons.",
             launch::OPTIONS
         );
         return Ok(());
@@ -47,14 +47,13 @@ fn run() -> Result<(), String> {
                 index % world.width(),
                 index / world.width()
             );
-            if let Some(machine) = agent.automaton {
+            if info.is_some() {
+                let machine = agent.automaton;
                 print!(
                     " automaton={} state={}",
                     machine.specification(),
                     agent.last_action.unwrap_or(machine.initial).label()
                 );
-            } else if info.is_some() {
-                print!(" weights={:?}", agent.weights.0);
             }
             if let Some(rules) = world.maintenance() {
                 let cost = virtual_life::engine::upkeep_at(

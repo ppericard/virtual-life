@@ -1,0 +1,27 @@
+tick=10 count=15
+accepted: moves=20 creations=6 removals=5 value_changes=0 repairs=49 failures=5
+group=0 count=0
+group=1 count=6
+group=2 count=6
+group=3 count=3
+id=13 value=0 at=(1,0) automaton=wait:3,0,0,2/1,0,0,0/0,0,0,1/10,1,1,8 state=Wait integrity=7/10 current_occupied_neighbors=3 next_tick_upkeep=1 (base=1 crowding=0; displayed neighborhood) last_action=Wait (selected action; success not implied)
+id=5 value=0 at=(2,0) automaton=wait:0,0,0,1/0,0,0,1/0,0,0,1/3,3,2,12 state=Move integrity=8/10 current_occupied_neighbors=1 next_tick_upkeep=1 (base=1 crowding=0; displayed neighborhood) last_action=Move (selected action; success not implied)
+id=2 value=0 at=(6,0) automaton=wait:3,0,0,2/1,0,0,0/0,0,0,1/10,1,1,8 state=Wait integrity=9/10 current_occupied_neighbors=2 next_tick_upkeep=1 (base=1 crowding=0; displayed neighborhood) last_action=Wait (selected action; success not implied)
+id=15 value=0 at=(0,1) automaton=wait:0,0,0,1/0,0,0,1/0,0,0,1/3,3,2,12 state=Repair integrity=10/10 current_occupied_neighbors=1 next_tick_upkeep=1 (base=1 crowding=0; displayed neighborhood) last_action=Repair (selected action; success not implied)
+id=19 value=0 at=(3,2) automaton=wait:0,0,0,1/0,0,0,1/0,0,0,1/3,3,2,12 state=Wait integrity=10/10 current_occupied_neighbors=2 next_tick_upkeep=1 (base=1 crowding=0; displayed neighborhood) last_action=not-yet-acted (selected action; success not implied)
+id=6 value=0 at=(4,2) automaton=wait:0,0,0,1/0,0,0,1/0,0,0,1/3,3,2,12 state=Copy integrity=7/10 current_occupied_neighbors=1 next_tick_upkeep=1 (base=1 crowding=0; displayed neighborhood) last_action=Copy (selected action; success not implied)
+id=7 value=0 at=(0,3) automaton=wait:3,0,0,2/1,0,0,0/0,0,0,1/10,1,1,8 state=Wait integrity=4/10 current_occupied_neighbors=2 next_tick_upkeep=1 (base=1 crowding=0; displayed neighborhood) last_action=Wait (selected action; success not implied)
+id=8 value=0 at=(2,3) automaton=wait:0,0,0,1/0,0,0,1/0,0,0,1/3,3,2,12 state=Repair integrity=10/10 current_occupied_neighbors=3 next_tick_upkeep=1 (base=1 crowding=0; displayed neighborhood) last_action=Repair (selected action; success not implied)
+id=18 value=0 at=(7,3) automaton=wait~2,0:0,0,0,1/0,0,0,1/1,0,3,6/2,1,7,10 state=Repair integrity=10/10 current_occupied_neighbors=2 next_tick_upkeep=1 (base=1 crowding=0; displayed neighborhood) last_action=Repair (selected action; success not implied)
+id=10 value=0 at=(1,4) automaton=wait~2,0:0,0,0,1/0,0,0,1/1,0,3,6/2,1,7,10 state=Copy integrity=4/10 current_occupied_neighbors=4 next_tick_upkeep=1 (base=1 crowding=0; displayed neighborhood) last_action=Copy (selected action; success not implied)
+id=20 value=0 at=(2,4) automaton=wait~2,0:0,0,0,1/0,0,0,1/1,0,3,6/2,1,7,10 state=Wait integrity=10/10 current_occupied_neighbors=2 next_tick_upkeep=1 (base=1 crowding=0; displayed neighborhood) last_action=not-yet-acted (selected action; success not implied)
+id=16 value=0 at=(6,4) automaton=wait~2,0:0,0,0,1/0,0,0,1/1,0,3,6/2,1,7,10 state=Repair integrity=10/10 current_occupied_neighbors=3 next_tick_upkeep=1 (base=1 crowding=0; displayed neighborhood) last_action=Repair (selected action; success not implied)
+id=17 value=0 at=(0,5) automaton=wait~2,0:0,0,0,1/0,0,0,1/1,0,3,6/2,1,7,10 state=Repair integrity=10/10 current_occupied_neighbors=3 next_tick_upkeep=1 (base=1 crowding=0; displayed neighborhood) last_action=Repair (selected action; success not implied)
+id=3 value=0 at=(6,5) automaton=wait~2,0:0,0,0,1/0,0,0,1/1,0,3,6/2,1,7,10 state=Copy integrity=6/10 current_occupied_neighbors=3 next_tick_upkeep=1 (base=1 crowding=0; displayed neighborhood) last_action=Copy (selected action; success not implied)
+id=14 value=0 at=(7,5) automaton=wait:0,0,0,1/0,0,0,1/0,0,0,1/3,3,2,12 state=Repair integrity=10/10 current_occupied_neighbors=4 next_tick_upkeep=1 (base=1 crowding=0; displayed neighborhood) last_action=Repair (selected action; success not implied)
+recent_failures=5 discarded_failures=0 (latest 128 engine outcomes; independent of observation)
+failure: id=1 tick=5 at=(1,0) reason=move wear integrity_before=2 occupied_neighbors=3 base_upkeep=1 crowding_upkeep=0 upkeep=1 action_wear=1
+failure: id=12 tick=5 at=(0,4) reason=upkeep integrity_before=2 occupied_neighbors=5 base_upkeep=1 crowding_upkeep=1 upkeep=2 action_wear=0
+failure: id=4 tick=7 at=(0,4) reason=upkeep integrity_before=1 occupied_neighbors=4 base_upkeep=1 crowding_upkeep=0 upkeep=1 action_wear=0
+failure: id=9 tick=8 at=(6,3) reason=upkeep integrity_before=1 occupied_neighbors=1 base_upkeep=1 crowding_upkeep=0 upkeep=1 action_wear=0
+failure: id=11 tick=8 at=(2,4) reason=upkeep integrity_before=1 occupied_neighbors=3 base_upkeep=1 crowding_upkeep=0 upkeep=1 action_wear=0

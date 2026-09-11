@@ -11,8 +11,12 @@ function svgElement(tag, attrs = {}, text = '') {
 }
 export function probabilityLabels(tickets) {
   const values = tickets.map(BigInt), total = values.reduce((a,b) => a+b, 0n);
-  return values.map(value => value === 0n || total === 0n ? '0%' : value === total ? '100%' :
-    value * 1000n < total ? '<0.1%' : `${Number(value * 1000n / total) / 10}%`);
+  return values.map(value => {
+    if (value === 0n || total === 0n) return '0%';
+    if (value === total) return '100%';
+    if (value * 1000n < total) return '<0.1%';
+    return `${Number(value * 1000n / total) / 10}%`;
+  });
 }
 export function graph(source, weights, probabilities = false) {
   const svg = svgElement('svg', {viewBox:'0 0 380 320', role:'img', class:'automaton-graph'});
@@ -60,9 +64,16 @@ function card(machine, name) {
   label.append(select); root.append(title,label,note,drawing,response);
   let current = null;
   function draw() {
-    const live=select.value==='current', source=live?current?.state:select.value;
-    note.textContent=live ? current?.transition_tickets ? `Next choice from ${source}, using integrity ${current.integrity_after_upkeep} after upkeep and this neighbourhood. Percentages are rounded down; action success is not guaranteed.` : 'Upkeep is fatal before another choice; no transition is drawn.' : 'Inherited relative weights before integrity and crowding adjustments. Zero-weight arrows are absent.';
-    drawing.replaceChildren(...(source && (!live || current?.transition_tickets) ? [graph(source,live?current.transition_tickets:machine.rows[states.indexOf(source)],live)] : []));
+    if (select.value !== 'current') {
+      note.textContent = 'Inherited relative weights before integrity and crowding adjustments. Zero-weight arrows are absent.';
+      drawing.replaceChildren(graph(select.value, machine.rows[states.indexOf(select.value)]));
+    } else if (current?.transition_tickets) {
+      note.textContent = `Next choice from ${current.state}, using integrity ${current.integrity_after_upkeep} after upkeep and this neighbourhood. Percentages are rounded down; action success is not guaranteed.`;
+      drawing.replaceChildren(graph(current.state, current.transition_tickets, true));
+    } else {
+      note.textContent = 'Upkeep is fatal before another choice; no transition is drawn.';
+      drawing.replaceChildren();
+    }
   }
   select.addEventListener('change',draw);
   return {root, update(agent) {current=agent; draw();}, preset() {select.options[0].remove(); select.value=machine.initial; draw();}};
@@ -81,7 +92,6 @@ export function renderAgentAutomaton(root, sample, selected) {
 export function renderPresetAutomata(root, groups) {
   root.replaceChildren();
   groups.forEach((group,i)=> {
-    if (!group.automaton) return;
     const widget=card(group.automaton,`Group ${String.fromCharCode(65+i)} automaton`);
     widget.preset(); root.append(widget.root);
   });
