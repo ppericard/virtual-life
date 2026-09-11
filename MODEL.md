@@ -8,6 +8,34 @@ An agent is an individual, with a stable ID, inherited graph, current integrity 
 
 The world is a rectangular grid with wraparound edges and eight immediate neighbours. Dimensions are at least 3, so neighbours are distinct. A square holds at most one individual. Updates are synchronous: everyone consults the same starting grid, and newborns first act on the following tick. Observation never changes the simulation.
 
+## Survival and death as outcomes
+
+**Core principle — stated by Pierre on 10 September 2026 and reaffirmed on 11 September:** an individual's survival and eventual failure should result from its internal mechanisms and interactions with its environment. Do not assign it a death date or choose death as an autonomous action. Model the processes that sustain or disrupt it, and observe the resulting lifetimes.
+
+- No fixed or sampled maximum lifespan, chronological-age death probability, or independent per-tick death lottery. Renaming a countdown "damage" or "energy" does not satisfy the principle: a fixed initial quantity that only drains toward inevitable deletion still schedules death.
+- Age can be measured as elapsed time since birth. Lifetime, turnover and survival distributions are observations, not instructions to the agent. The suggested **50–200 ticks, or less**, expresses an exploratory timescale for generational turnover; it is not an approved cap, target distribution or guaranteed result.
+- Keep open whether successful maintenance can sustain an individual indefinitely or whether future causal mechanisms eventually defeat it. Pierre explicitly left both possibilities open. Long survival is a reason to examine the mechanisms; it does not authorize an age limit.
+- Movement, open space, changing populations and diversity are experiment interests. Do not enforce them by deleting old agents, globally culling a full world, protecting types from extinction or injecting replacements. Mutation remains a separate priority; it does not require scheduled death.
+
+The intended causal structure is:
+
+```mermaid
+flowchart LR
+    Local[Local conditions and interactions] --> Balance[Maintenance versus wear and damage]
+    Action[Individual activity] --> Balance
+    Restore[Repair or restoration] --> Balance
+    Balance --> Condition[Actual condition]
+    Condition --> Continue[Continued operation or recovery]
+    Continue --> Action
+    Condition --> Failure[Failure of continued operation]
+```
+
+This is a design principle, not a claim that detailed physiology already exists. The current implementation uses **integrity exhaustion as a coarse failure criterion**: upkeep and Move/Copy wear reduce integrity, Repair restores it, and an unaffordable cost removes the individual and records the cause. Thus timing depends on history and conditions, but the failure criterion and removal bookkeeping remain explicit. Calling that "emergent death" must not hide this abstraction. There is no age field or lifespan limit.
+
+Current Repair consumes only an action opportunity, with no material supply to exhaust. For example, an isolated, always-Repair graph at the default settings repeats `10 -> 9 after upkeep -> 10 after capped repair`. This loop can persist indefinitely. It exposes the present maintenance model's limits; reducing gross Repair below an unavoidable upkeep cost could instead create another unavoidable depletion clock. Neither outcome by itself establishes a satisfactory survival model.
+
+Future survival changes should identify what sustains an individual, what impairs it, what permits recovery, and what actual failure is recorded. Compare histories under different actions and surroundings rather than enforcing an age distribution. New resource budgets, damage processes, inheritance rules or interactions still need a model decision. See the [conversation evidence and bounded research](docs/research/emergent-survival.md) for rationale and candidate mechanisms; those candidates are not accepted rules.
+
 ## Probabilistic unit-action automata
 
 **11 September 2026 — Pierre's decisions:** use Wait, Move, Copy and Repair as states, with inherited outgoing arrows that can differ by source state. Missing arrows and certain transitions are allowed. Recompute preferences each tick from the individual's properties and local environment. Repair must follow integrity smoothly, without a repair threshold. Types differ through inherited graphs and response parameters; no type-specific code or species hierarchy is introduced.
