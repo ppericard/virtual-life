@@ -26,7 +26,7 @@ Open the printed address, normally **http://127.0.0.1:7878**, in your browser. U
 
 The whole world fits below compact run controls on desktop, with square cells and exact total/group counts. On narrow screens the world appears directly below the controls. Click an occupied square or choose **Inspect** to follow an agent. The inspector shows its state graph and current transition probabilities; the selector explores inherited arrows from each state. Integrity adjusts Repair and Copy, while crowding adjusts Move and Copy. The last selected action may have failed; initial agents and newborns have not yet acted.
 
-Open **Analysis** for the existing population plot, accepted event totals and failure records, or **Details** for inherited graphs, effective settings and rules. Sampling continues while Analysis is closed. Panel toggles and resizing preserve observations and do not send simulation commands; connection errors and uncertain outcomes stay visible above the world.
+Open **Analysis** for the existing population plot, accepted event totals and failure records, or **Details** for property groups, effective settings and rules. Sampling continues while Analysis is closed. Panel toggles and resizing preserve observations and do not send simulation commands; connection errors and uncertain outcomes stay visible above the world.
 
 The default experiment starts paused with 230 agents in a 32 × 24 grid, split between four inherited FSMs. It runs for 500 ticks. Integrity falls through upkeep and costly attempts; Repair restores it. Crowding affects both upkeep and transition probabilities. Attempts can fail, and continued survival or extinction are both valid outcomes. Use `--mode demo` for the separate five-tick scripted engine fixture.
 
