@@ -4,13 +4,77 @@
 
 ## Individuals and the world
 
-An agent is an individual, with a stable ID, inherited graph, current integrity and last selected action. Biological species or roles are interpretations of observed behaviour, not classes with separate code. Resources may eventually be represented by individuals with different properties; no separate resource or energy layer exists now.
+An agent is an individual, with a stable ID, inherited graph, current integrity and last selected action. Biological species or roles are interpretations of observed behaviour, not classes with separate code. The next model direction represents finite resources through individuals with different properties and conserves their material. The current implementation has no material or energy account.
 
 The world is a rectangular grid with wraparound edges and eight immediate neighbours. Dimensions are at least 3, so neighbours are distinct. A square holds at most one individual. Updates are synchronous: everyone consults the same starting grid, and newborns first act on the following tick. Observation never changes the simulation.
+
+## Survival and death as outcomes
+
+**Core principle — stated by Pierre on 10 September 2026 and reaffirmed on 11 September:** an individual's survival and eventual failure should result from its internal mechanisms and interactions with its environment. Do not assign it a death date or choose death as an autonomous action. Model the processes that sustain or disrupt it, and observe the resulting lifetimes.
+
+- No fixed or sampled maximum lifespan, chronological-age death probability, or independent per-tick death lottery. Renaming a countdown "damage" or "energy" does not satisfy the principle: assigning each individual a stock that can never be replenished and only drains toward inevitable deletion still schedules its death. This does not prohibit a finite world supply that individuals acquire through interactions, or exhaustion under particular environmental conditions.
+- Age can be measured as elapsed time since birth. Lifetime, turnover and survival distributions are observations, not instructions to the agent. The suggested **50–200 ticks, or less**, expresses an exploratory timescale for generational turnover; it is not an approved cap, target distribution or guaranteed result.
+- Keep open whether successful maintenance can sustain an individual indefinitely or whether future causal mechanisms eventually defeat it. Pierre explicitly left both possibilities open. Long survival is a reason to examine the mechanisms; it does not authorize an age limit.
+- Movement, open space, changing populations and diversity are experiment interests. Do not enforce them by deleting old agents, globally culling a full world, protecting types from extinction or injecting replacements. Mutation remains a separate priority; it does not require scheduled death.
+
+The intended causal structure is:
+
+```mermaid
+flowchart LR
+    Local[Local conditions and interactions] --> Balance[Maintenance versus wear and damage]
+    Action[Individual activity] --> Balance
+    Restore[Repair or restoration] --> Balance
+    Balance --> Condition[Actual condition]
+    Condition --> Continue[Continued operation or recovery]
+    Continue --> Action
+    Condition --> Failure[Failure of continued operation]
+```
+
+This is a design principle, not a claim that detailed physiology already exists. The current implementation uses **integrity exhaustion as a coarse failure criterion**: upkeep and Move/Copy wear reduce integrity, Repair restores it, and an unaffordable cost removes the individual and records the cause. Thus timing depends on history and conditions, but the failure criterion and removal bookkeeping remain explicit. Calling that "emergent death" must not hide this abstraction. There is no age field or lifespan limit.
+
+Current Repair consumes only an action opportunity, with no material supply to exhaust. For example, an isolated, always-Repair graph at the default settings repeats `10 -> 9 after upkeep -> 10 after capped repair`. This loop can persist indefinitely. It exposes the present maintenance model's limits; reducing gross Repair below an unavoidable upkeep cost could instead create another unavoidable depletion clock. Neither outcome by itself establishes a satisfactory survival model.
+
+Future survival changes should identify what sustains an individual, what impairs it, what permits recovery, and what actual failure is recorded. Compare histories under different actions and surroundings rather than enforcing an age distribution. The conserved-material direction below is accepted; exact resource transfers, damage processes and inheritance rules still need a model decision. See the [conversation evidence and bounded research](docs/research/emergent-survival.md) for rationale; research candidates do not become accepted rules by citation.
+
+### Finite resources and conserved material
+
+**11 September 2026 — Pierre's direction and conservation requirement:** start with a finite resource stock, initially represented by simple agents that do not move or do much. Individuals acquire reserve through local interactions; Repair uses it and Copy must account for the material given to its child. Used material becomes recoverable through wear or breakdown. An individual that ceases functioning cannot simply disappear with its contents: "Rien ne se perd, rien ne se crée, tout se transforme."
+
+**Everything in the world is represented by agents.** Resource stocks and remains must also use the agent representation; material amounts and condition may be properties of those agents. Do not introduce a separate resource field, an unrepresented debris pool, or an automatic recycling service. Recycling must be expressed through agent interactions and transformations using the common model.
+
+**Conservation is a model invariant:** total material carried by all agents, including resource holders and remains, must equal the world's initial material after every tick. Acquisition transfers it; Repair reorganizes it; Copy transfers material into a child; wear and failure leave material represented by agents. No transition may silently create or discard it. This requirement concerns material; it does not assert that usable reserve, integrity or the number of functioning individuals stays constant. No separate energy model or external replenishment has been selected.
+
+```mermaid
+flowchart LR
+    Stock[Agents holding resource stocks] -->|Local acquisition| Reserve[Agents holding reserve]
+    Reserve -->|Repair or construction| Structure[Agents with functioning structure]
+    Structure -->|Wear or breakdown| Remains[Agents holding remains]
+    Remains -->|Agent interactions and transformations| Stock
+    Reserve -->|Copy transfers material| Child[Child agents]
+    Child -->|Wear or breakdown| Remains
+```
+
+Treat resource-like individuals as property presets of the same agent representation, rather than predefined biological species. A stationary, non-copying preset could hold a finite stock. Its maintenance behaviour needs an explicit decision: under the current shared upkeep, simply choosing Wait would exhaust its integrity. Do not quietly give one named group a survival exemption. A loss of functioning organization may end an individual's activity while its material remains locally available; material persistence does not mean the individual is still alive.
+
+Recycling needs concrete agent interactions, including access and processing limits; immediately refunding every Repair cost to the same individual would recreate free restoration. Acquisition timing, extraction limits, competition over a holder and the identity of transformed agents still need concrete rules. Reserve exhaustion alone is not an individual's death. The current engine's integrity loss, removal of failed individuals and fresh maximum-integrity children do not implement this material accounting; this accepted direction is not yet implemented.
+
+**Shared cells are under consideration, not selected or implemented.** Pierre suggested allowing agents to stack on cells so individuals, resources and remains can coexist locally. Transforming one individual into a resource-like agent in place does not itself require stacking; retaining an active individual alongside newly separated material can benefit from it. Any shared-cell design must use the same occupancy rules for every agent, not separate biological/resource layers. Capacity, crowding, targeting, simultaneous claims and inspection would need revised rules; the current engine still permits one agent per cell.
 
 ## Probabilistic unit-action automata
 
 **11 September 2026 — Pierre's decisions:** use Wait, Move, Copy and Repair as states, with inherited outgoing arrows that can differ by source state. Missing arrows and certain transitions are allowed. Recompute preferences each tick from the individual's properties and local environment. Repair must follow integrity smoothly, without a repair threshold. Types differ through inherited graphs and response parameters; no type-specific code or species hierarchy is introduced.
+
+**Decision rationale — reference diagram:** Pierre identified the following graph as what convinced him to choose this FSM model. Preserve its three inputs to each tick's action weights as the design reference. The original diagram's "repair threshold" was explicitly rejected and is removed here.
+
+```mermaid
+flowchart LR
+    A["Inherited parameters<br/>transition graph,<br/>copy response, crowding response"] --> D["Weights for this tick"]
+    B["Internal state<br/>current action state + integrity"] --> D
+    C["Local environment<br/>occupied and empty neighbours"] --> D
+    D --> E["Choose one unit action"]
+```
+
+Inherited parameters define how an individual responds; its current internal state and local environment determine the weights for this tick. Normalize those weights and sample one unit action. In the current implementation this occurs after the upkeep check, using integrity after upkeep. Repair uses a shared smooth response to missing integrity, scaled by the inherited row's Repair weight; there is no inherited repair threshold. Future property or spatial changes should preserve this separation between inherited response rules, current inputs and the resulting action choice.
 
 Each graph holds an initial state, four rows of four nonnegative integer weights, a Copy damage gain and a Move crowding gain (both 0–255). Every inherited row must contain a positive weight. Initial agents and newborns use the inherited initial state's row but have not yet acted. Thereafter the last selected action selects the row, including rejected Move/Copy attempts. One draw chooses the next state and its unit action in the same tick. Offspring inherit the whole graph and response parameters, receive fresh maximum integrity and no selected action, and first act next tick. Exact inherited graphs, initial state and response parameters define groups; current integrity and action state do not.
 

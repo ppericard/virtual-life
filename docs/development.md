@@ -131,7 +131,11 @@ Keep evidence in the PR. Distinguish automated checks, independent review, visua
 
 The engine uses ordinary vectors and an ID-to-starting-square hash map: expected O(grid squares + proposals). The chooser adjusts four weights per survivor without allocation; group counting is O(occupants x configured groups), capped at eight groups. These are algorithmic bounds, not frame-rate guarantees. `cargo run --release --example chooser_timing` measures choice passes on unchanged full grids, excluding transition resolution, HTTP and rendering.
 
-There is no mutation, energy/material account, age mortality, neighbour-property response, live world editing, persistence, export, cloud deployment or generic property framework yet. Repair costs only its action opportunity. Page-local observations are lost on refresh; process termination loses the run.
+There is no mutation, energy/material account, neighbour-property response, live world editing, persistence, export, cloud deployment or generic property framework yet. Repair costs only its action opportunity. Page-local observations are lost on refresh; process termination loses the run.
+
+Age-based mortality is excluded by the [survival principle](../MODEL.md#survival-and-death-as-outcomes), not a missing feature to add later. Current failure is the explicit integrity/upkeep/wear approximation. Repair has no material budget and can sustain some individuals indefinitely; lifetime observations must not silently become lifespan enforcement.
+
+The next model must [conserve material through recycling](../MODEL.md#finite-resources-and-conserved-material), including after an individual fails. The current engine removes failed individuals and does not retain or account for their material; existing integrity tests do not establish material conservation.
 
 ## Historical references
 

@@ -10,6 +10,10 @@ The goal is an interactive place to explore: give individuals a few properties a
 
 Agents are individuals, not predefined species or roles. Even resources are agents with different properties. Biological-looking behaviour is something to discover and interpret, not a result to hardcode.
 
+Survival and death should arise from what individuals do and what happens around them. The model explores maintenance, wear and repair; it does not assign lifespans. See the [survival principle](MODEL.md#survival-and-death-as-outcomes) for the distinction between this goal and the current integrity-based approximation.
+
+The next model will use a finite stock of recyclable material held by agents. Repair and reproduction will transform or transfer that material; failure will leave material in the world. This [conservation requirement](MODEL.md#finite-resources-and-conserved-material) is a design direction, not a capability of the current simulation.
+
 The starting world is a 2D grid with wraparound edges, eight neighbouring squares and at most one agent per square. Each tick uses the same starting state for all agents. The simulation runs independently of its viewer, so watching it does not change its outcomes. The aim is exploration through understandable algorithms, rather than realistic biology or particle physics.
 
 ## Run
