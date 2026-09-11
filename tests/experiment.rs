@@ -375,6 +375,22 @@ fn fixed_tick_results_ignore_observation_rate_backpressure_and_disconnect() {
             }),
             ..ExperimentConfig::default()
         });
+        check_observation_independence(ExperimentConfig {
+            automata: Some(
+                virtual_life::automaton::PRESETS
+                    .iter()
+                    .map(|p| p.machine)
+                    .collect(),
+            ),
+            maintenance: Some(virtual_life::engine::Maintenance {
+                upkeep: 0,
+                crowding_upkeep: 0,
+                move_wear: 0,
+                copy_wear: 0,
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
         let _ = finished.send(());
     });
     completion
@@ -691,24 +707,4 @@ fn check_observation_independence(configuration: ExperimentConfig) {
             expected
         );
     }
-}
-
-#[test]
-fn automata_are_independent_of_absent_saturated_and_disconnected_observers() {
-    check_observation_independence(ExperimentConfig {
-        automata: Some(
-            virtual_life::automaton::PRESETS
-                .iter()
-                .map(|p| p.machine)
-                .collect(),
-        ),
-        maintenance: Some(virtual_life::engine::Maintenance {
-            upkeep: 0,
-            crowding_upkeep: 0,
-            move_wear: 0,
-            copy_wear: 0,
-            ..Default::default()
-        }),
-        ..Default::default()
-    });
 }
