@@ -57,7 +57,7 @@ pub fn snapshot_json(sample: &Snapshot) -> Value {
             "groups": info.groups.iter().enumerate().map(|(index, group)| json!({
                 "proportion": group.proportion.to_string(),
                 "automaton": group.automaton,
-                "automaton_name": crate::automaton::PRESETS.iter().find(|p|p.machine == group.automaton).map_or("Custom automaton",|p|p.name),
+                "automaton_name": crate::automaton::catalog().find(|p|p.machine == group.automaton).map_or("Custom automaton",|p|p.name),
                 "initial_count": group.initial_count.to_string(), "count": counts[index].to_string()
             })).collect::<Vec<_>>()
         })
