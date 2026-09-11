@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, openPanel } from './fixtures.js';
 
 const states = [
   [[1,10,0,2],[2,20,2,2],[3,30,4,2]],
@@ -12,7 +12,7 @@ const totals = [[0,0,0,0],[0,0,0,1],[0,1,1,1],[2,1,1,2],[2,2,1,2],[2,2,3,2]];
 const colors = ['#c89bc4', '#89baca', '#d6b36e', '#b4bf83', '#97bba0'];
 async function clickCell(page, x, y) {
   const canvas = page.locator('#grid'); const box = await canvas.boundingBox();
-  await canvas.click({ position: { x: (40 + (x + .5) * 108) * box.width / 600, y: (40 + (y + .5) * 108) * box.height / 600 } });
+  await canvas.click({ position: { x: (8 + (x + .5) * 108) * box.width / 556, y: (8 + (y + .5) * 108) * box.height / 556 } });
 }
 async function checkState(page, server, tick) {
   await expect(page.locator('#tick')).toHaveText(String(tick));
@@ -22,8 +22,8 @@ async function checkState(page, server, tick) {
   const pixels = await page.locator('#grid').evaluate(canvas => {
     const ctx = canvas.getContext('2d');
     return Array.from({length: 25}, (_, i) => {
-      const x = (40 + i % 5 * 108 + 18) * canvas.width / 600;
-      const y = (40 + Math.floor(i / 5) * 108 + 18) * canvas.height / 600;
+      const x = (8 + i % 5 * 108 + 18) * canvas.width / 556;
+      const y = (8 + Math.floor(i / 5) * 108 + 18) * canvas.height / 556;
       const pixel = ctx.getImageData(x, y, 1, 1).data;
       return '#' + [...pixel].slice(0, 3).map(n => n.toString(16).padStart(2,'0')).join('');
     });
@@ -82,6 +82,7 @@ test.describe('pacing and gaps', () => {
     await expect(page.getByRole('status')).toHaveText('completed');
     await checkState(page,server,5);
     await expect(page.locator('#samples')).toContainText('sampling gap');
+    await openPanel(page, 'Analysis');
     const ticks = (await page.locator('#plot').getAttribute('aria-label')).match(/Tick (\d+)/g).map(s => Number(s.slice(5)));
     expect(ticks.some((tick,i) => i > 0 && tick-ticks[i-1]>1)).toBe(true);
     expect(ticks).toContain(Number(paused));

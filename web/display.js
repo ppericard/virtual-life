@@ -42,6 +42,7 @@ export function renderExperiment(sample) {
   document.getElementById('dimensions').textContent = `${sample.width} × ${sample.height} · wraparound edges`;
   document.getElementById('intro').textContent = sample.experiment ? 'An autonomous experiment. Shared properties, individual choices, synchronous ticks.' : 'Five scripted transitions. A test of the machinery, before autonomous rules.';
   const legend = document.getElementById('legend'); legend.replaceChildren();
+  const counts = document.getElementById('population-groups'); counts.replaceChildren();
   document.getElementById('experiment-settings').hidden = !sample.experiment;
   document.getElementById('choice-rule').hidden = !sample.experiment?.maintenance;
   document.getElementById('failure-evidence').hidden = !sample.experiment?.maintenance;
@@ -67,6 +68,9 @@ export function renderExperiment(sample) {
     const details = document.createElement('span'); details.textContent = `Group ${groupLabel(index)} · ${group.weights.join(' / ')} · ratio ${group.proportion} · initially ${group.initial_count}`;
     const count = document.createElement('strong'); count.textContent = group.count; count.className = 'group-count';
     row.append(swatch, details, count); legend.append(row);
+    const chip = document.createElement('span'); chip.className = 'group-chip';
+    chip.setAttribute('aria-label', `Group ${groupLabel(index)}: ${group.count} agents`);
+    chip.append(swatch.cloneNode(true), count.cloneNode(true)); counts.append(chip);
   });
 }
 
@@ -89,6 +93,14 @@ function gridGeometry(sample) {
   const pitch = 540 / Math.max(sample.width, sample.height);
   const padding = 8;
   return {pitch, left: padding, top: padding, width: padding * 2 + sample.width * pitch, height: padding * 2 + sample.height * pitch};
+}
+
+// Fit the actual canvas box, including the frame used by drawing and hit testing.
+export function fitGrid(canvas, sample, availableWidth, availableHeight) {
+  const g = gridGeometry(sample);
+  const scale = Math.max(0, Math.min(availableWidth / g.width, availableHeight / g.height));
+  canvas.style.width = `${g.width * scale}px`;
+  canvas.style.height = `${g.height * scale}px`;
 }
 
 export function gridPosition(canvas, event, sample) {
@@ -116,6 +128,7 @@ export function drawGrid(canvas, sample, selected) {
   const g = gridGeometry(sample), w = g.pitch, h = g.pitch;
   canvas.style.aspectRatio = `${g.width} / ${g.height}`;
   const box = canvas.getBoundingClientRect();
+  if (!box.width || !box.height) return;
   // Cap raster allocation at 4096² pixels. CSS geometry stays square at any DPR,
   // including fractional backing-size rounding and very elongated worlds.
   const ctx = prepareCanvas(canvas, box.width, box.height, 4096), scale = box.width / g.width;
@@ -137,6 +150,11 @@ export function drawGrid(canvas, sample, selected) {
 }
 
 export function drawPlot(canvas, history) {
+  // Retain accessible evidence even when closed; allocate/paint only when visible.
+  canvas.setAttribute('aria-label', history.map(point => point.groups
+    ? `Tick ${point.tick}: ${point.groups.map((count, group) => `Group ${groupLabel(group)} ${count}`).join(', ')}; total ${point.count}`
+    : `Tick ${point.tick}: ${point.count} agents`).join('; '));
+  if (!canvas.getBoundingClientRect().width) return;
   const ctx = prepareCanvas(canvas, 600, 230);
   if (history[0]?.groups) { drawGroupPlot(canvas, ctx, history); return; }
   if (!history.length) return;
@@ -161,7 +179,6 @@ export function drawPlot(canvas, history) {
     }
     ctx.fillStyle = '#254f45'; ctx.beginPath(); ctx.arc(x(point), y(point), 5, 0, Math.PI * 2); ctx.fill();
   });
-  canvas.setAttribute('aria-label', history.map(p => `Tick ${p.tick}: ${p.count} agents`).join('; '));
 }
 
 function drawGroupPlot(canvas, ctx, history) {
@@ -186,5 +203,4 @@ function drawGroupPlot(canvas, ctx, history) {
   const final = history.at(-1);
   ctx.textAlign = 'left'; ctx.font = '12px system-ui';
   final.groups.forEach((count, group) => { ctx.fillStyle = groupColor(group); ctx.fillText(`${groupLabel(group)} ${count}`, 544, 28 + group * 18, 55); });
-  canvas.setAttribute('aria-label', history.map(point => `Tick ${point.tick}: ${point.groups.map((count, group) => `Group ${groupLabel(group)} ${count}`).join(', ')}; total ${point.count}`).join('; '));
 }

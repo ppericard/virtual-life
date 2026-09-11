@@ -9,44 +9,42 @@
 </head>
 <body>
   <main>
-    <header><div><p class="eyebrow">VIRTUAL LIFE / EXPERIMENT 01</p><h1>A small world, one tick at a time.</h1><p class="intro" id="intro">Five scripted transitions. A test of the machinery, before autonomous rules.</p></div><span id="status" role="status">Connecting</span></header>
-    <section class="toolbar" aria-label="Experiment controls">
-      <div class="tick">Tick <strong id="tick">—</strong><span> / <span id="end-tick">—</span></span></div>
-      <div class="buttons"><button id="resume" disabled>Resume</button><button id="pause" disabled>Pause</button><button id="step" disabled>Single step</button></div>
-      <fieldset id="preset-controls" hidden>
-        <legend>Property preset for next restart</legend>
-        <p id="current-preset" class="hint"></p>
-        <div id="preset-options"></div>
-        <p id="next-preset" aria-live="polite"></p>
-        <p class="hint">Each preset replaces the four weight bundles and uses equal proportions. Crowding lowers the base Copy chance further. All other settings stay the same. These illustrative combinations do not guarantee coexistence.</p>
-        <details><summary>Next restart weights</summary><p class="hint">Wait / Move / Copy / Repair</p><p id="preset-weights" class="hint"></p></details>
-      </fieldset>
-      <div id="restart-controls" hidden><label for="seed">Seed</label><input id="seed" type="text" inputmode="numeric" value="1" aria-describedby="control-message" disabled><div class="buttons"><button id="restart-seed" disabled>Restart with seed</button><button id="restart-random" disabled>Restart with random seed</button></div></div>
-      <p id="control-message" aria-live="polite">Starts paused. Advance a tick to inspect individual decisions.</p>
-      <p id="run-message" aria-live="polite"></p>
-    </section>
-    <p id="connection" role="alert" hidden></p>
+    <header class="toolbar" aria-label="Experiment controls">
+      <h1>VirtualLife</h1>
+      <div class="run-controls"><div class="buttons"><button id="resume" disabled>Resume</button><button id="pause" disabled>Pause</button><button id="step" disabled>Single step</button></div><div class="tick">Tick <strong id="tick">—</strong> / <span id="end-tick">—</span></div><span id="status" role="status">Connecting</span></div>
+      <nav aria-label="Workspace panels"><button id="inspect-toggle" data-panel="inspection" aria-expanded="false" aria-controls="inspection-panel">Inspect</button><button id="analysis-toggle" data-panel="analysis" aria-expanded="false" aria-controls="analysis-panel">Analysis</button><button id="details-toggle" data-panel="details" aria-expanded="false" aria-controls="details-panel">Details</button><button id="new-experiment-toggle" data-panel="new-experiment" aria-expanded="false" aria-controls="new-experiment-panel" hidden>New experiment</button></nav>
+    </header>
+    <div class="notices"><p id="control-message" aria-live="polite">Starts paused. Select an agent or advance a tick.</p><p id="run-message" aria-live="polite"></p><p id="connection" role="alert" hidden></p></div>
     <div class="workspace">
-      <section class="world"><div class="section-heading"><h2>World</h2><span id="dimensions">—</span></div>
-        <canvas id="grid" width="600" height="600" role="img" aria-label="World grid">The world is also available in the agent selector.</canvas>
-        <p class="hint">Click an occupied square to inspect and follow its agent.</p>
+      <section class="world" aria-labelledby="world-title">
+        <div class="world-heading"><h2 id="world-title">World</h2><span id="dimensions">—</span><span class="population"><strong id="count">—</strong> agents</span><div id="population-groups" aria-label="Current property group counts"></div></div>
+        <div id="world-frame"><canvas id="grid" width="600" height="600" tabindex="0" role="img" aria-label="World grid; use Inspect for keyboard selection">The world is also available in the agent selector.</canvas></div>
       </section>
-      <aside class="details">
-        <section id="experiment-settings" hidden><div class="section-heading"><h2>Property groups</h2><span id="action-order">Wait / move / copy / remove</span></div><div id="legend"></div><p id="choice-rule" class="hint" hidden>Copy chance is scaled by the fraction of empty neighbours; the rest goes to Wait. Move/Copy still choose among all eight. Group weights stay inherited.</p><p id="configuration" class="hint"></p></section><section class="inspection"><div class="section-heading"><h2>Inspect an agent</h2><span>Read only</span></div>
-          <label for="agent">Agent</label><select id="agent"><option value="">Choose an agent</option></select>
-          <p id="inspection" aria-live="polite">Select an occupied square or choose an agent above.</p>
-        </section>
-        <section class="measurements"><div class="section-heading"><h2>Measurements</h2><span>Accepted events</span></div>
-          <dl><div class="population"><dt>Agents now</dt><dd id="count">—</dd></div><div><dt>Moves</dt><dd id="moves">—</dd></div><div><dt>Creations</dt><dd id="creations">—</dd></div><div><dt>Removals</dt><dd id="removals">—</dd></div><div><dt>Value changes</dt><dd id="value_changes">—</dd></div><div class="maintenance-measurement" hidden><dt>Repairs</dt><dd id="repairs">—</dd></div><div class="maintenance-measurement" hidden><dt>Failures</dt><dd id="failures">—</dd></div></dl>
-        </section>
-        <section class="history"><div class="section-heading"><h2>Population over time</h2></div>
-          <canvas id="plot" width="600" height="230" role="img" aria-label="Observed agent counts"></canvas>
-          <p id="samples">Waiting for the first sample.</p><p class="hint">Gaps stay unconnected; refreshing starts a new history.</p>
-        </section>
-        <section id="failure-evidence" hidden><div class="section-heading"><h2>Failure evidence</h2></div><p id="failure-summary" class="hint"></p><details><summary>Recent failure records</summary><ol id="failure-list"></ol></details></section>
+      <aside id="inspection-panel" class="inspection" aria-labelledby="inspection-title" hidden>
+        <div class="section-heading"><h2 id="inspection-title">Inspect an agent</h2><button data-close="inspection" aria-label="Close inspection">Close</button></div>
+        <p class="hint">Read only · Click an occupied square or choose an agent.</p><label for="agent">Agent</label><select id="agent"><option value="">Choose an agent</option></select><p id="inspection" aria-live="polite">Select an occupied square or choose an agent above.</p>
       </aside>
     </div>
-    <footer>The Rust process owns this experiment. Refresh or close this page and reconnect at any time. Stop the server with Ctrl+C in its terminal.</footer>
+    <section id="new-experiment-panel" class="secondary-panel" aria-labelledby="new-experiment-title" tabindex="-1" hidden>
+      <div class="section-heading"><h2 id="new-experiment-title">New experiment</h2><button data-close="new-experiment" aria-label="Close New experiment">Close</button></div>
+      <div class="panel-body">
+        <p class="hint">Choose settings for the next restart. Either Restart button replaces the current run; opening or closing this panel leaves it unchanged.</p>
+        <fieldset id="preset-controls" hidden><legend>Property preset for next restart</legend><p id="current-preset" class="hint"></p><div id="preset-options"></div><p id="next-preset" aria-live="polite"></p><p class="hint">Each preset replaces the four weight bundles and uses equal proportions. Crowding lowers the base Copy chance further. All other settings stay the same. These illustrative combinations do not guarantee coexistence.</p><details><summary>Next restart weights</summary><p class="hint">Wait / Move / Copy / Repair</p><p id="preset-weights" class="hint"></p></details></fieldset>
+        <div id="restart-controls" hidden><label for="seed">Seed</label><input id="seed" type="text" inputmode="numeric" value="1" aria-describedby="control-message" disabled><div class="buttons"><button id="restart-seed" disabled>Restart with seed</button><button id="restart-random" disabled>Restart with random seed</button></div></div>
+      </div>
+    </section>
+    <section id="analysis-panel" class="secondary-panel" aria-labelledby="analysis-title" tabindex="-1" hidden>
+      <div class="section-heading"><h2 id="analysis-title">Analysis</h2><button data-close="analysis" aria-label="Close Analysis">Close</button></div>
+      <div class="panel-body analysis-content">
+        <section class="history"><h2>Population over time</h2><canvas id="plot" width="600" height="230" role="img" aria-label="Observed agent counts"></canvas><p id="samples">Waiting for the first sample.</p><p class="hint">Gaps stay unconnected; refreshing starts a new history.</p></section>
+        <section class="measurements"><div class="section-heading"><h2>Measurements</h2><span>Accepted events</span></div><dl><div><dt>Moves</dt><dd id="moves">—</dd></div><div><dt>Creations</dt><dd id="creations">—</dd></div><div><dt>Removals</dt><dd id="removals">—</dd></div><div><dt>Value changes</dt><dd id="value_changes">—</dd></div><div class="maintenance-measurement" hidden><dt>Repairs</dt><dd id="repairs">—</dd></div><div class="maintenance-measurement" hidden><dt>Failures</dt><dd id="failures">—</dd></div></dl></section>
+        <section id="failure-evidence" hidden><h2>Failure evidence</h2><p id="failure-summary" class="hint"></p><details><summary>Recent failure records</summary><ol id="failure-list"></ol></details></section>
+      </div>
+    </section>
+    <section id="details-panel" class="secondary-panel" aria-labelledby="details-title" tabindex="-1" hidden>
+      <div class="section-heading"><h2 id="details-title">Details</h2><button data-close="details" aria-label="Close Details">Close</button></div>
+      <div class="panel-body"><p class="hint" id="intro">Five scripted transitions. A test of the machinery, before autonomous rules.</p><section id="experiment-settings" hidden><div class="section-heading"><h2>Property groups</h2><span id="action-order">Wait / move / copy / remove</span></div><div id="legend"></div><p id="choice-rule" class="hint" hidden>Copy chance is scaled by the fraction of empty neighbours; the rest goes to Wait. Move/Copy still choose among all eight. Group weights stay inherited.</p><p id="configuration" class="hint"></p></section><footer>The Rust process owns this experiment. Refresh or close this page and reconnect at any time. Stop the server with Ctrl+C in its terminal.</footer></div>
+    </section>
   </main>
 </body>
 </html>

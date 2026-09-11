@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, openPanel, inspectAgent } from './fixtures.js';
 
 const runHeader = 'x-virtuallife-run';
 async function read(page, server) {
@@ -16,6 +16,7 @@ async function restart(page, server, seed) {
 async function ready(page, seed = '1') {
   await expect(page.locator('#tick')).toHaveText('0');
   await expect(page.getByRole('status')).toHaveText('paused');
+  await openPanel(page, 'New experiment');
   await expect(page.getByLabel('Seed', { exact: true })).toHaveValue(seed);
   await expect(page.locator('#restart-seed')).toBeEnabled();
 }
@@ -36,8 +37,8 @@ test.describe('seeded web restarts', () => {
     expect(initial.sample.experiment.maintenance).toMatchObject({crowding_threshold:3,crowding_upkeep:2});
     const second = await context.newPage(); await second.goto(server.url); await ready(second);
     const selected = initial.sample.cells.find(Boolean).id;
-    await page.locator('#agent').selectOption(selected);
-    await second.locator('#agent').selectOption(selected);
+    await inspectAgent(page, selected);
+    await inspectAgent(second, selected);
     for (let tick = 1; tick <= 12; tick++) await step(page, tick);
     await expect(second.locator('#tick')).toHaveText('12');
     const final = (await read(page, server)).sample;
@@ -209,6 +210,7 @@ test.describe('launched effective seed and zero tick lifecycle', () => {
   test.use({ serverArgs: ['--mode', 'autonomous', '--seed', '18446744073709551615', '--ticks', '0'] });
   test('launched seed remains exact and a zero tick run restarts completed', async ({ page, server }) => {
     await page.goto(server.url);
+    await openPanel(page, 'New experiment');
     await expect(page.locator('#seed')).toHaveValue('18446744073709551615');
     await expect(page.getByRole('status')).toHaveText('completed');
     const old = await read(page, server);

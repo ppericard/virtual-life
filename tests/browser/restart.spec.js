@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures.js';
+import { test, expect, inspectAgent } from './fixtures.js';
 
 const snapshot = async (page, server) => (await page.request.get(`${server.url}/api/snapshot`)).json();
 
@@ -75,7 +75,7 @@ test('a retained page must not silently mix histories across a real server resta
     await expect(page.locator('#tick')).toHaveText(String(tick));
   }
   await expect(page.locator('#samples')).toContainText('Ticks 0–5 · 6 samples');
-  await page.locator('#agent').selectOption('5');
+  await inspectAgent(page, '5');
   const gate = await holdSnapshots(page);
   try {
     await gate.requested; // No post-restart browser read can reach the old server.
@@ -137,7 +137,7 @@ test.describe('approved automatic recovery', () => {
   test('same-tick restart clears selection and follows an already running new experiment', async ({ page, server }, info) => {
     await page.goto(server.url);
     await expect(page.locator('#tick')).toHaveText('0');
-    await page.locator('#agent').selectOption('2');
+    await inspectAgent(page, '2');
     const oldId = await runId(page, server);
     expect(oldId).toMatch(/^[0-9a-f]{32}$/);
     const gate = await holdSnapshots(page);
@@ -175,7 +175,7 @@ test.describe('approved automatic recovery', () => {
     await page.goto(server.url);
     await page.getByRole('button', { name: 'Single step' }).click();
     await expect(page.locator('#tick')).toHaveText('1');
-    await page.locator('#agent').selectOption('2');
+    await inspectAgent(page, '2');
     const identity = await runId(page, server);
     const history = await page.locator('#plot').getAttribute('aria-label');
     await context.setOffline(true);

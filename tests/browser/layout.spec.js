@@ -46,28 +46,37 @@ async function checkSquares(page, sample) {
 }
 
 async function checkLayout(page, width, portrait = false) {
+  // Container resizing schedules one animation-frame repaint, including offline.
+  await expect.poll(()=>page.locator('#grid').evaluate(canvas=>{
+    const grid=canvas.getBoundingClientRect(), frame=canvas.parentElement.getBoundingClientRect();
+    return grid.width<=frame.width+.1 && grid.height<=frame.height+.1
+      && (grid.width>frame.width-1 || grid.height>frame.height-1);
+  })).toBe(true);
   const layout = await page.evaluate(() => {
     const rect = selector => document.querySelector(selector).getBoundingClientRect();
-    const grid = rect('#grid'), world = rect('.world'), toolbar = rect('.toolbar');
+    const grid = rect('#grid'), world = rect('.world'), toolbar = rect('.toolbar'), frame = rect('#world-frame');
     return {
       viewport: innerWidth, overflow: document.documentElement.scrollWidth > innerWidth,
-      grid: { width: grid.width, height: grid.height, left: grid.left, right: grid.right },
+      grid: { width: grid.width, height: grid.height, left: grid.left, right: grid.right, top:grid.top, bottom:grid.bottom },
+      frame: {width:frame.width,height:frame.height,left:frame.left,right:frame.right,top:frame.top,bottom:frame.bottom}, height:innerHeight,
       controlsAbove: toolbar.bottom <= world.top,
-      panelsBelow: [...document.querySelectorAll('aside > section')]
-        .filter(panel => !panel.hidden).every(panel => panel.getBoundingClientRect().top >= world.bottom),
       plotWidth: rect('#plot').width,
     };
   });
   expect(layout.viewport).toBe(width);
   expect(layout.overflow).toBe(false);
-  expect(layout.grid.width).toBeGreaterThan(width - 80);
-  expect(layout.grid.left).toBeGreaterThanOrEqual(16);
-  expect(width - layout.grid.right).toBeCloseTo(layout.grid.left, 0);
+  expect(layout.grid.width).toBeGreaterThan(0);
+  expect(layout.grid.left).toBeGreaterThanOrEqual(12);
+  expect(layout.grid.left-layout.frame.left).toBeCloseTo(layout.frame.right-layout.grid.right, 0);
+  expect(layout.grid.top).toBeGreaterThanOrEqual(layout.frame.top-.1);
+  expect(layout.grid.bottom).toBeLessThanOrEqual(layout.frame.bottom+.1);
+  expect(layout.grid.bottom).toBeLessThanOrEqual(layout.height);
+  expect(layout.grid.width>layout.frame.width-1 || layout.grid.height>layout.frame.height-1).toBe(true);
   expect(layout.grid.height > layout.grid.width).toBe(portrait);
   expect(layout.controlsAbove).toBe(true);
-  expect(layout.panelsBelow).toBe(true);
   expect(layout.plotWidth).toBeLessThanOrEqual(760);
   for (const id of ['grid', 'plot']) {
+    if (!await page.locator(`#${id}`).isVisible()) continue; // Hidden plots repaint when their panel opens.
     await expect.poll(() => page.locator(`#${id}`).evaluate(canvas => {
       const box = canvas.getBoundingClientRect();
       const ratio = canvas.id === 'grid' ? Math.min(devicePixelRatio, 4096/box.width, 4096/box.height) : devicePixelRatio;
@@ -78,8 +87,13 @@ async function checkLayout(page, width, portrait = false) {
 
 async function clickCell(page, sample, index) {
   expect(index).toBeLessThan(sample.cells.length);
+  await clearNarrowInspector(page);
   const cell = await page.evaluate(index => window.gridPaint.cells[index], index);
   await page.locator('#grid').click({position: {x:cell.x+cell.w/2,y:cell.y+cell.h/2}});
+}
+
+async function clearNarrowInspector(page) {
+  if (await page.evaluate(()=>innerWidth<=720) && await page.locator('#inspection-panel').isVisible()) await page.getByRole('button',{name:'Close inspection',exact:true}).click();
 }
 
 async function checkPixels(page, sample) {
@@ -127,6 +141,7 @@ async function checkMargins(page, sample, occupied) {
     {x:(last.x+last.w+box.width)/2,y:last.y+last.h/2},
     {x:last.x+last.w/2,y:(last.y+last.h+box.height)/2},
   ]) {
+    await clearNarrowInspector(page);
     await canvas.click({position});
     await expect(page.locator('#agent')).toHaveValue('');
     await clickCell(page, sample, occupied);
@@ -140,7 +155,7 @@ async function save(page, info, name) {
   await info.attach(name, { path, contentType: 'image/png' });
 }
 
-test('full-width world stays crisp and selection survives paused and offline resizing', async ({page, context, server}, info) => {
+test('viewport-fit world stays crisp and selection survives paused and offline resizing', async ({page, context, server}, info) => {
   await page.goto(server.url);
   await expect(page.locator('#tick')).toHaveText('0');
   await page.getByRole('button', {name: 'Single step'}).click();
@@ -215,8 +230,10 @@ test('full-width world stays crisp and selection survives paused and offline res
   await checkLayout(page, 1680);
   await checkPixels(page, before);
   await checkLetters(page, before, true);
+  await context.setOffline(false);
+  await expect(page.getByRole('alert')).toBeHidden();
   // Returning to the original size restores the same plot and selection outline.
-  expect(await page.evaluate(pictures => ['grid', 'plot'].map((id, i) => document.getElementById(id).toDataURL() === pictures[i]), pictures)).toEqual([true, true]);
+  await expect.poll(()=>page.evaluate(pictures => ['grid', 'plot'].map((id, i) => document.getElementById(id).toDataURL() === pictures[i]), pictures)).toEqual([true, true]);
   await expect(page.locator('#agent')).toHaveValue(selected);
   await expect(page.locator('#samples')).toHaveText(samples);
   await expect(page.locator('#plot')).toHaveAttribute('aria-label', plot);
@@ -290,7 +307,7 @@ test.describe('large-world coordinates', () => {
 });
 
 test.describe('portrait world with fractional DPR', () => {
-  test.use({viewport:{width:700,height:900},deviceScaleFactor:1.25,
+  test.use({viewport:{width:1280,height:900},deviceScaleFactor:1.25,
     serverArgs:['--mode','autonomous','--width','6','--height','11','--ticks','5']});
   test('square cells and undistorted labels retain exact portrait hit targets', async ({page,server}, info) => {
     await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
@@ -298,7 +315,7 @@ test.describe('portrait world with fractional DPR', () => {
     const occupied = before.cells.findLastIndex(Boolean);
     let writes = 0;
     page.on('request', request => { if (request.method() === 'POST') writes++; });
-    for (const width of [700,390]) {
+    for (const width of [1280,1680,700,390]) {
       await page.setViewportSize({width,height:900});
       await checkLayout(page, width, true);
       await checkSquares(page, before);
@@ -315,6 +332,18 @@ test.describe('portrait world with fractional DPR', () => {
   });
 });
 
+test.describe('viewport-fit raster cap',()=>{
+  test.use({viewport:{width:1680,height:1000},deviceScaleFactor:8});
+  test('high pixel ratios preserve square geometry while capping the backing store',async({page,server})=>{
+    await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
+    const sample=await (await page.request.get(`${server.url}/api/snapshot`)).json();
+    await checkLayout(page,1680); await checkSquares(page,sample); await checkPixels(page,sample);
+    const size=await page.locator('#grid').evaluate(canvas=>[canvas.width,canvas.height]);
+    expect(Math.max(...size)).toBe(4096);
+    expect(size[0]*size[1]).toBeLessThanOrEqual(4096*4096);
+  });
+});
+
 for (const [width,height] of [[3,87381],[87381,3]]) {
   test.describe(`extreme ${width}x${height} world`, () => {
     test.use({viewport:{width:1280,height:900},deviceScaleFactor:2,
@@ -327,7 +356,7 @@ for (const [width,height] of [[3,87381],[87381,3]]) {
       const size = await page.locator('#grid').evaluate(canvas => [canvas.width,canvas.height]);
       expect(Math.max(...size)).toBeLessThanOrEqual(4096);
       expect(size[0]*size[1]).toBeLessThanOrEqual(4096*4096);
-      if (height>width) expect(Math.max(...size)).toBe(4096);
+      // Viewport fitting can keep both extremes below the cap.
     });
   });
 }
