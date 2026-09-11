@@ -242,7 +242,7 @@ fn invalid_graphs_and_incompatible_modes_are_rejected() {
     ] {
         assert!(launch::parse(args.into_iter().map(str::to_owned), false).is_err());
     }
-    for preset in &PRESETS {
+    for preset in virtual_life::automaton::catalog() {
         preset.machine.validate().unwrap();
     }
     for args in [
@@ -301,7 +301,7 @@ fn extreme_parameters_stay_bounded_and_damage_response_is_monotonic() {
         }
     }
     assert!(experiment::transition_weights(agent, u32::MAX - 1, u32::MAX, &[None; 8])[3] > 0);
-    for preset in &PRESETS {
+    for preset in virtual_life::automaton::catalog() {
         assert_eq!(
             Automaton::parse(&preset.machine.specification()).unwrap(),
             preset.machine
@@ -348,7 +348,10 @@ fn blocked_move_advances_the_graph_and_seeded_populations_preserve_invariants() 
             seed,
             width: 13,
             height: 9,
-            automata: PRESETS.iter().map(|p| p.machine).collect(),
+            automata: virtual_life::automaton::catalog()
+                .map(|p| p.machine)
+                .collect(),
+            proportions: vec![1; virtual_life::automaton::catalog().count()],
             ..Default::default()
         };
         let (mut a, mut ra, info) = config.initialize().unwrap();
@@ -379,4 +382,32 @@ fn ordinary_launch_uses_the_mixed_fsm_population() {
         PRESETS.iter().map(|p| p.machine).collect::<Vec<_>>()
     );
     assert_eq!(config.ticks, 500);
+}
+
+#[test]
+fn trial_presets_are_available_explicitly_in_both_launch_modes() {
+    use virtual_life::automaton::{TRIAL_PRESETS, catalog};
+    let mut ids = std::collections::HashSet::new();
+    let mut machines = std::collections::HashSet::new();
+    for preset in catalog() {
+        assert!(ids.insert(preset.id));
+        assert!(machines.insert(preset.machine));
+    }
+    let choices = std::iter::once((
+        "open-world",
+        TRIAL_PRESETS.iter().map(|p| p.machine).collect::<Vec<_>>(),
+    ))
+    .chain(TRIAL_PRESETS.iter().map(|p| (p.id, vec![p.machine])));
+    for (id, expected) in choices {
+        for web in [false, true] {
+            let launch = launch::parse(["--automaton-preset", id].map(str::to_owned), web).unwrap();
+            let settings = launch.config.experiment.unwrap();
+            assert_eq!(settings.proportions, vec![1; expected.len()]);
+            assert_eq!(settings.automata, expected);
+            assert_eq!(
+                settings.maintenance,
+                ExperimentConfig::default().maintenance
+            );
+        }
+    }
 }

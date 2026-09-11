@@ -3,7 +3,7 @@
 ## Start with the right context
 Read the task and relevant [README](README.md) sections; read [MODEL.md](MODEL.md) when behaviour is involved. README presents the project, long-term goals and quick start; [the development reference](docs/development.md) covers technical details and checks. MODEL holds rules and consequential decisions; issues/PRs hold current work, priorities, progress and evidence. Keep task status, next steps and execution logs out of README. These supersede planning attachments. Pierre's current decisions take precedence over stale notes; investigate disagreements.
 
-Use task branches and PRs into `master`. Verify the assigned base, current refs and local changes; preserve compatible work when heads move. Archives and the retired restart branch are references, not development bases. Never reset newer work to an old task's pinned commit.
+Use task branches and PRs into `main`. Verify the assigned base, current refs and local changes; preserve compatible work when heads move. Archives and the retired restart branch are references, not development bases. Never reset newer work to an old task's pinned commit.
 
 ## Work within scope
 Follow the requested role; a review is not permission to edit. Default to one active implementation task with an objective, base/source pointers, scope, acceptance checks and stopping point. Scale detail to uncertainty; do not duplicate MODEL or create management machinery. Parallel investigation may be useful; concurrent writers need isolated working trees and nonconflicting scope.

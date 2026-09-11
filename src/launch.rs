@@ -7,7 +7,7 @@ use std::time::Duration;
 
 pub const OPTIONS: &str = "[--mode autonomous|demo] [--ticks N]
 [--width N] [--height N] [--occupancy 0..1] [--seed N]
-[--automaton-preset mixed|movement-runs|repair-cycles|copy-bursts|wait-cycles]
+[--automaton-preset mixed|open-world|movement-runs|repair-cycles|copy-bursts|wait-cycles|roamers|burst-copiers|settlers]
 [--automata INITIAL[~COPY_DAMAGE_GAIN,MOVE_CROWDING_GAIN]:ROW/ROW/ROW/ROW;...]
 [--proportions N,...] [--integrity N] [--upkeep N]
 [--crowding-threshold 0..8] [--crowding-upkeep N] [--move-wear N] [--copy-wear N] [--repair N]
@@ -124,6 +124,11 @@ pub fn parse(arguments: impl IntoIterator<Item = String>, web: bool) -> Result<L
                 }
                 let machines = if value == "mixed" {
                     crate::automaton::PRESETS
+                        .iter()
+                        .map(|preset| preset.machine)
+                        .collect::<Vec<_>>()
+                } else if value == "open-world" {
+                    crate::automaton::TRIAL_PRESETS
                         .iter()
                         .map(|preset| preset.machine)
                         .collect::<Vec<_>>()

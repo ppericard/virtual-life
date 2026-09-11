@@ -27,16 +27,22 @@ fn machines(
 }
 
 pub(super) fn catalog() -> Vec<Preset> {
-    let mut presets = vec![machines(
-        "mixed-automata",
-        "Mixed automata",
-        "Four inherited graphs with distinct sequences and responses to integrity and crowding.",
-        automaton::PRESETS.iter().map(|p| p.machine).collect(),
-    )];
+    let mut presets = vec![
+        machines(
+            "mixed-automata",
+            "Mixed automata",
+            "Four inherited graphs with distinct sequences and responses to integrity and crowding.",
+            automaton::PRESETS.iter().map(|p| p.machine).collect(),
+        ),
+        machines(
+            "open-world",
+            "Open-world trial",
+            "Roamers, burst copiers and settlers compete for space. Diversity can decline over long runs.",
+            automaton::TRIAL_PRESETS.iter().map(|p| p.machine).collect(),
+        ),
+    ];
     presets.extend(
-        automaton::PRESETS
-            .iter()
-            .map(|p| machines(p.id, p.name, p.description, vec![p.machine])),
+        automaton::catalog().map(|p| machines(p.id, p.name, p.description, vec![p.machine])),
     );
     presets
 }

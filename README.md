@@ -34,7 +34,7 @@ Open **Analysis** for the existing population plot, accepted event totals and fa
 
 The default experiment starts paused with 230 agents in a 32 × 24 grid, split between four inherited FSMs. It runs for 500 ticks. Integrity falls through upkeep and costly attempts; Repair restores it. Crowding affects both upkeep and transition probabilities. Attempts can fail, and continued survival or extinction are both valid outcomes. Use `--mode demo` for the separate five-tick scripted engine fixture.
 
-Open **New experiment** and choose **Mixed automata** or one of **Movement runs**, **Repair cycles**, **Copy bursts** and **Wait cycles**. Preview inherited arrows under **Next restart graphs**. Selection stays pending until restart and replaces inherited properties and proportions using equal shares. **Keep current custom settings** cancels a pending choice for a custom run. Closing the panel retains edits.
+Open **New experiment** and choose a mixed population or an individual graph. **Open-world trial** mixes **Roamers**, **Burst copiers** and **Settlers** to explore movement, turnover and unoccupied space. These three graphs are also available individually, alongside the original **Mixed automata**, **Movement runs**, **Repair cycles**, **Copy bursts** and **Wait cycles** choices. Preview inherited arrows under **Next restart graphs**. Selection stays pending until restart and replaces inherited properties and proportions using equal shares. **Keep current custom settings** cancels a pending choice for a custom run. Closing the panel retains edits.
 
 Use **Restart with seed** to apply the choice with a fixed seed, or **Restart with random seed** to explore a new one. The seed starts with the launched value (normally 1); a random restart displays its chosen seed for reproduction. Restarts retain all other current settings, start paused at tick 0, and clear previous histories and selection. A zero-tick run starts completed. Presets are available in autonomous mode, including after completion; they are illustrative combinations without a promise of coexistence.
 
@@ -71,6 +71,6 @@ npm run test:e2e
 
 Browser assets are embedded in the Rust executable: after editing them, restart the server through `cargo run` and reload the page.
 
-The [development reference](docs/development.md) covers the code-reading guide, API and full verification checklist, including release tests, Clippy and dependency audits. Use task branches and pull requests into `master`, and read [AGENTS.md](AGENTS.md) for contributor guidance. Bugs, ideas and ongoing work belong in [GitHub issues](https://github.com/ppericard/virtual-life/issues).
+The [development reference](docs/development.md) covers the code-reading guide, API and full verification checklist, including release tests, Clippy and dependency audits. Use task branches and pull requests into `main`, and read [AGENTS.md](AGENTS.md) for contributor guidance. Bugs, ideas and ongoing work belong in [GitHub issues](https://github.com/ppericard/virtual-life/issues).
 
 [License](LICENSE)

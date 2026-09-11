@@ -111,8 +111,11 @@ Illustrative presets, all initially in Wait:
 | Repair cycles | Wait, Move and Copy each lead only to Repair; Repair can lead to any state. |
 | Copy bursts | Copy can repeat; Copy damage gain 2 gives multiplier `1 + 2d`. |
 | Wait cycles | Wait can repeat; Repair sometimes leads to Move or Copy; Move leads to Wait. |
+| Roamers | Move can repeat; Copy leads only to Repair. |
+| Burst copiers | Copy can repeat with damage gain 2; Move leads only to Repair. |
+| Settlers | Wait can repeat; only Repair has an outgoing Move arrow; Copy leads only to Repair. |
 
-Exact rows are in `src/automaton.rs` and exposed in CLI metadata and browser diagrams. These are starting hypotheses, without a coexistence or survival guarantee. `unit-action automaton v1` identifies this sampling protocol.
+The default mix contains the first four. The optional **Open-world trial** contains the last three in equal shares, exploring open space, movement and turnover under the same maintenance rules. Neither mix enforces a population target or preserves types after extinction. Exact rows are in `src/automaton.rs` and exposed in CLI metadata and browser diagrams. These are starting hypotheses, without a coexistence or survival guarantee. `unit-action automaton v1` identifies this sampling protocol.
 
 **Near-term model priority:** mutation during copying, so new inherited types can arise beyond the starting presets. Pierre explicitly wants this soon. It is not implemented here; mutation rate, size, allowable graph changes, and how to display growing diversity need a separate model decision. **Later exploration:** longer-lived behaviour modes (for example roaming and recovery) which can each perform multiple unit actions. The current implementation keeps unit actions as states.
 

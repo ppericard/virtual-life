@@ -192,6 +192,63 @@ pub const PRESETS: [Preset; 4] = [
     },
 ];
 
+/// Candidates for open space, movement and population turnover under default
+/// maintenance. Finite seeded trials do not establish lasting coexistence.
+pub const TRIAL_PRESETS: [Preset; 3] = [
+    Preset {
+        id: "roamers",
+        name: "Roamers",
+        description: "Move can repeat; Copy always leads to Repair before another movement or copying choice.",
+        machine: Automaton {
+            initial: ActionState::Wait,
+            copy_damage_gain: 0,
+            move_crowding_gain: 0,
+            rows: [
+                Weights([0, 8, 6, 17]),
+                Weights([0, 8, 0, 17]),
+                Weights([0, 0, 0, 1]),
+                Weights([0, 8, 6, 17]),
+            ],
+        },
+    },
+    Preset {
+        id: "burst-copiers",
+        name: "Burst copiers",
+        description: "Copy can repeat and gains weight as integrity falls; movement leads back to Repair.",
+        machine: Automaton {
+            initial: ActionState::Wait,
+            copy_damage_gain: 2,
+            move_crowding_gain: 0,
+            rows: [
+                Weights([0, 2, 6, 8]),
+                Weights([0, 0, 0, 1]),
+                Weights([0, 0, 6, 8]),
+                Weights([1, 2, 6, 8]),
+            ],
+        },
+    },
+    Preset {
+        id: "settlers",
+        name: "Settlers",
+        description: "Wait can repeat; Move is available only after Repair, and Copy always returns to Repair.",
+        machine: Automaton {
+            initial: ActionState::Wait,
+            copy_damage_gain: 0,
+            move_crowding_gain: 0,
+            rows: [
+                Weights([8, 0, 3, 11]),
+                Weights([0, 0, 0, 1]),
+                Weights([0, 0, 0, 1]),
+                Weights([8, 2, 3, 11]),
+            ],
+        },
+    },
+];
+
+pub fn catalog() -> impl Iterator<Item = &'static Preset> {
+    PRESETS.iter().chain(TRIAL_PRESETS.iter())
+}
+
 pub fn find(id: &str) -> Option<&'static Preset> {
-    PRESETS.iter().find(|preset| preset.id == id)
+    catalog().find(|preset| preset.id == id)
 }
