@@ -42,6 +42,8 @@ Future survival changes should identify what sustains an individual, what impair
 
 **Everything in the world is represented by agents.** Resource stocks and remains must also use the agent representation; material amounts and condition may be properties of those agents. Do not introduce a separate resource field, an unrepresented debris pool, or an automatic recycling service. Recycling must be expressed through agent interactions and transformations using the common model.
 
+**Generalization clarification — 11 September 2026:** Pierre rejected a separate "functioning/inert" agent distinction. An apparently inert resource holder can simply have a FSM whose arrows always lead to Wait. Use the same agent properties, graph representation and action rules throughout. Do not introduce an inert type, an alive flag, or a blanket action ban derived from zero structure in the material model. Particular actions can have common, explicit material or structural requirements; behaviour follows the individual's graph and properties. This direction does not yet replace the current engine's coarse integrity-exhaustion rule described above.
+
 **Conservation is a model invariant:** total material carried by all agents, including resource holders and remains, must equal the world's initial material after every tick. Acquisition transfers it; Repair reorganizes it; Copy transfers material into a child; wear and failure leave material represented by agents. No transition may silently create or discard it. This requirement concerns material; it does not assert that usable reserve, integrity or the number of functioning individuals stays constant. No separate energy model or external replenishment has been selected.
 
 ```mermaid
@@ -54,7 +56,7 @@ flowchart LR
     Child -->|Wear or breakdown| Remains
 ```
 
-Treat resource-like individuals as property presets of the same agent representation, rather than predefined biological species. A stationary, non-copying preset could hold a finite stock. Its maintenance behaviour needs an explicit decision: under the current shared upkeep, simply choosing Wait would exhaust its integrity. Do not quietly give one named group a survival exemption. A loss of functioning organization may end an individual's activity while its material remains locally available; material persistence does not mean the individual is still alive.
+Treat resource-like individuals as property presets of the same agent representation, rather than predefined biological species. A stationary, non-copying preset could hold a finite stock. Its maintenance behaviour needs an explicit decision: under the current shared upkeep, simply choosing Wait would exhaust its integrity. Do not quietly give one named group a survival exemption. Damage may prevent particular actions through their shared requirements while material remains locally available; do not turn this observation into a separate inert-agent category.
 
 Recycling needs concrete agent interactions, including access and processing limits; immediately refunding every Repair cost to the same individual would recreate free restoration. Acquisition timing, extraction limits, competition over a holder and the identity of transformed agents still need concrete rules. Reserve exhaustion alone is not an individual's death. The current engine's integrity loss, removal of failed individuals and fresh maximum-integrity children do not implement this material accounting; this accepted direction is not yet implemented.
 

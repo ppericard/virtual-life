@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prototype:material": "node web/material-prototype/server.mjs",
     "check": "node scripts/check-js.mjs",
     "test:e2e": "cargo build --locked --features web --bin web && playwright test"
   },
