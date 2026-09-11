@@ -12,6 +12,7 @@ The earlier discussion was recovered from the original VirtualLife orchestrator'
 | 10 September, 10:54 | Pierre then said: "death should probably not be something determined in advance" and "Death should come from either the inner mechanisms or interaction with the environment." He requested mechanisms that could make agents vulnerable without explicitly programming death into their behaviour. |
 | 10 September, 10:56 | Asked whether successful maintenance could keep an individual alive indefinitely, Pierre answered: "Keep both possibilities open for now." Vulnerability and guaranteed eventual death must therefore remain distinct. |
 | 11 September | Pierre questioned powerful Repair and long-lived individuals, suggesting 50–200 ticks or less while seeking turnover across generations. He then explicitly rejected the assistant's proposed maximum lifespan and reaffirmed death as an outcome of processes. The range must not be turned into a cap or prescribed mortality curve. |
+| 11 September, subsequent reserve discussion | Pierre proposed finite resources initially held by simple, largely inactive agents, required that a failing individual cannot disappear with its material, and selected recycling after wear or breakdown. He reaffirmed that everything must remain agents, without separate mechanisms, and raised shared cells as a possibility. The accepted [material-conservation direction](../../MODEL.md#finite-resources-and-conserved-material) comes from those decisions, not from the papers below; stacking remains a proposal. |
 
 The age-limit recommendation was an assistant error, not an accepted model decision. The current code contains no lifespan field or chronological-age removal rule. Future research and summaries must preserve that distinction rather than presenting an earlier suggestion as approval.
 
@@ -40,9 +41,9 @@ flowchart LR
 
 Nothing in that history makes maintenance harder. Imposing an age cap would hide the cause of persistence. Conversely, making every available action lose more integrity than can ever be restored would impose eventual depletion. We should investigate the balance and the source of restoration before trying to make the lifetime histogram look right.
 
-Two small candidate directions follow from the research, without selecting either:
+Two candidate mechanisms follow from the research. The subsequent finite-material decision selects a direction for the first; their exact algorithms remain proposals:
 
-- **Restoration depends on available support:** maintenance and Repair consume something that can also be replenished through local processes. Define supply and expenditure together; a non-replenishable fuel tank would be another countdown. Resource representation remains a separate decision.
+- **Restoration depends on available support:** Repair uses material acquired through local processes, while wear or breakdown makes material recoverable. Individual supply, local acquisition and recycling need to be specified together. Finite world resources do not impose a personal lifespan: individuals can replenish their reserves from other holders. Treating each individual as a sealed, non-replenishable fuel tank would be a different model.
 - **Condition affects function:** activity or local exposure damages the ability to maintain or restore the individual; successful compensation permits recovery. Define the causal coupling before adding another scalar called "damage". Do not silently force unavoidable decline with age.
 
 These could eventually interact with inherited FSM parameters and mutation. They do not justify implementing a new resource layer, changing Copy inheritance, or forcing finite individual lifetimes without a model decision.

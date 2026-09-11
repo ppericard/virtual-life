@@ -124,6 +124,8 @@ There is no mutation, energy/material account, neighbour-property response, live
 
 Age-based mortality is excluded by the [survival principle](../MODEL.md#survival-and-death-as-outcomes), not a missing feature to add later. Current failure is the explicit integrity/upkeep/wear approximation. Repair has no material budget and can sustain some individuals indefinitely; lifetime observations must not silently become lifespan enforcement.
 
+The next model must [conserve material through recycling](../MODEL.md#finite-resources-and-conserved-material), including after an individual fails. The current engine removes failed individuals and does not retain or account for their material; existing integrity tests do not establish material conservation.
+
 ## Historical references
 
 The native viewer and browser migration are recorded in [PR #2](https://github.com/ppericard/virtual-life/pull/2) and [PR #4](https://github.com/ppericard/virtual-life/pull/4). Detailed execution history and preserved branch tips remain in the [pre-cleanup README](https://github.com/ppericard/virtual-life/blob/9ca715a77965d9a8d4dee4a79f2a0d5a3fef5d4c/README.md#continuity-and-contribution) and Git history, not a rolling log here.
