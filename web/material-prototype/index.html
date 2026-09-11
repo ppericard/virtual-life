@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VirtualLife · Material laboratory</title><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script></head>
+<body>
+<header><div><p class="eyebrow">VIRTUALLIFE · DISPOSABLE PROTOTYPE</p><h1>Where does the material go?</h1><p>Explore a few agents, one step at a time. These are proposed rules, not an autonomous run.</p></div><a href="http://127.0.0.1:7880/" target="_blank" rel="noreferrer">Current simulation ↗</a></header>
+<section class="controls" aria-label="Example and hypotheses">
+ <label>Worked example<select id="scenario"><option value="repair">Acquire, repair & release</option><option value="copy">Fund a child</option><option value="failure">Wear & reuse</option><option value="capacity">A cell near capacity</option></select></label>
+ <label>Cell occupancy<select id="space"><option value="shared">Shared · maximum 20 material</option><option value="single">One agent · maximum 20 material</option></select></label>
+ <label>Acquisition hypothesis<select id="acquisition"><option value="take">Separate Take, then Repair</option><option value="pull">Repair draws from a target</option></select></label>
+ <button id="reset">Reset example</button>
+</section>
+<section class="totals" aria-label="Material accounting">
+ <div><span class="muted">WORLD MATERIAL</span><strong id="total">0 / 0</strong><span id="conserved">Conserved</span></div>
+ <div><span class="swatch structure"></span>Structure <b id="structure-total"></b></div>
+ <div><span class="swatch reserve"></span>Reserve <b id="reserve-total"></b></div>
+ <div><span class="swatch loose"></span>Loose material <b id="loose-total"></b></div>
+ <div><span class="muted">AGENTS</span><strong id="agents-total"></strong></div>
+</section>
+<main>
+ <section class="world-panel"><div class="section-head"><h2>Everything shown is an agent</h2><span>4 × 3 · wraparound</span></div><p class="hint">Click an agent to inspect its graph and material. Click a cell heading to choose a destination for Move, Copy or separation.</p><div id="world" class="world" aria-label="World"></div><div class="step-controls"><button id="next" class="primary">Next worked step</button><span id="guide"></span><button id="undo">Undo</button></div><p id="upcoming" class="hint"></p></section>
+ <aside><h2>Inspect & act</h2>
+  <label>Selected agent<select id="actor"></select></label>
+  <div id="agent-detail"></div>
+  <label>Target agent<select id="target"></select></label>
+  <label>Destination cell<select id="destination"></select></label>
+  <div class="actions"><button data-op="wait">Wait</button><button data-op="move">Move</button><button data-op="copy">Copy</button><button data-op="repair">Repair</button><button data-op="take" id="take">Take 3 · candidate</button></div>
+  <p class="hint">Additional manual probes below expose wear and material separation. They are not new approved FSM states.</p>
+  <div class="actions"><button data-op="wear">Apply wear 1</button><button data-op="release">Separate loose material</button></div>
+ </aside>
+ <section class="change"><div class="section-head"><h2>What changed?</h2><span id="step-number">Step 0</span></div><p id="message" role="status" aria-live="polite"></p><div id="balance"></div><div id="changes"></div></section>
+ <section class="rules"><h2>Hypotheses you are testing</h2><ul><li>Every agent has the same properties and graph format. A resource-like preset simply has all arrows leading to Wait.</li><li>Repair converts reserve into structure. Wear converts structure into loose material; it does not change the graph or delete reserve at zero structure.</li><li>Acquisition transfers another agent’s loose material; it cannot reclaim your own loose material.</li><li>Copy transfers 5 reserve into a child: 3 structure + 2 reserve. Attempt wear is 2. Children and separated fragments inherit the source graph.</li><li>Move carries all material and has attempt wear of 1. Crowding uses a proposed material capacity.</li><li>No automatic recycling, refilling, age limit or background ticking. Zero structure is not a blanket action ban. Steps are manual, not lifetimes.</li></ul><p><strong>Still open:</strong> acquisition as a separate unit action or part of Repair, occupancy/capacity, and access to held loose material. Simultaneous competing claims, autonomous probability adjustment and inherited mutation are not represented here.</p></section>
+</main>
+<details class="history"><summary>Recent step records</summary><ol id="history"></ol></details>
+<footer>Decision reference: inherited parameters + internal state + local environment → this tick’s weights → one unit action.<br>This laboratory isolates material and spatial rules. It does not run the production FSM chooser.</footer>
+</body></html>
