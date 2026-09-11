@@ -64,6 +64,18 @@ Recycling needs concrete agent interactions, including access and processing lim
 
 **11 September 2026 — Pierre's decisions:** use Wait, Move, Copy and Repair as states, with inherited outgoing arrows that can differ by source state. Missing arrows and certain transitions are allowed. Recompute preferences each tick from the individual's properties and local environment. Repair must follow integrity smoothly, without a repair threshold. Types differ through inherited graphs and response parameters; no type-specific code or species hierarchy is introduced.
 
+**Decision rationale — reference diagram:** Pierre identified the following graph as what convinced him to choose this FSM model. Preserve its three inputs to each tick's action weights as the design reference. The original diagram's "repair threshold" was explicitly rejected and is removed here.
+
+```mermaid
+flowchart LR
+    A["Inherited parameters<br/>transition graph,<br/>copy response, crowding response"] --> D["Weights for this tick"]
+    B["Internal state<br/>current action state + integrity"] --> D
+    C["Local environment<br/>occupied and empty neighbours"] --> D
+    D --> E["Choose one unit action"]
+```
+
+Inherited parameters define how an individual responds; its current internal state and local environment determine the weights for this tick. Normalize those weights and sample one unit action. In the current implementation this occurs after the upkeep check, using integrity after upkeep. Repair uses a shared smooth response to missing integrity, scaled by the inherited row's Repair weight; there is no inherited repair threshold. Future property or spatial changes should preserve this separation between inherited response rules, current inputs and the resulting action choice.
+
 Each graph holds an initial state, four rows of four nonnegative integer weights, a Copy damage gain and a Move crowding gain (both 0–255). Every inherited row must contain a positive weight. Initial agents and newborns use the inherited initial state's row but have not yet acted. Thereafter the last selected action selects the row, including rejected Move/Copy attempts. One draw chooses the next state and its unit action in the same tick. Offspring inherit the whole graph and response parameters, receive fresh maximum integrity and no selected action, and first act next tick. Exact inherited graphs, initial state and response parameters define groups; current integrity and action state do not.
 
 After the mandatory upkeep check, let `d` be missing integrity as a fraction of maximum, `n` occupied neighbours out of eight, and `(W,M,C,R)` the current inherited row. The conceptual weights are:
