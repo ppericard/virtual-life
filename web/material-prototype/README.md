@@ -15,11 +15,11 @@ The logic is a small pure module in `model.js`; the browser exposes its complete
 ## Hypotheses, not approved rules
 
 - Each agent carries structure, reserve and loose material. For these examples structure doubles as integrity; all three count toward conserved material.
-- All agents have the same graph and material fields. The resource-like initial presets have every outgoing arrow leading to Wait. The other preset exposes several arrows for manual exploration; the lab does not sample or adjust probabilities. Take is a candidate fifth action, omitted in the alternative acquisition setting.
+- All agents have the same graph and material fields. The resource-like initial presets have every outgoing arrow leading to Wait. The other preset exposes several arrows for manual exploration; the lab does not sample or adjust probabilities. Take is the chosen fifth action; the alternative acquisition setting omits it for comparison only.
 - Zero structure does not change the graph, disable all actions or convert reserve. Wait follows the graph; Repair can restore structure when reserve is available. Move and Copy require structure after attempt wear. A fully absorbed zero-material holder may be removed; the transferred material remains in other agents.
 - Loose material is a property held by an agent. There is no debris field, world recycling service or automatic refill. A manual separation probe can form another agent from held loose material.
 - Shared cells and one-agent cells both have an illustrative 20-material capacity. Shared occupancy permits splitting in place without increasing occupied material. Moving and cross-cell acquisition check destination capacity.
-- Compare explicit Take (a candidate additional unit action) with Repair obtaining needed material from a local target. Neither acquisition contract is approved. Take uses only another agent's loose material and does not inspect a species label.
+- Pierre chose explicit Take over Repair obtaining needed material from a local target on 24 September 2026 (see MODEL). The Repair-pull setting remains only as a comparison. Take uses only another agent's loose material and does not inspect a species label.
 - Repair converts at most 4 reserve to structure; Copy funds 3 structure and 2 reserve in a child. Move/Copy attempts convert 1/2 structure into retained loose material. These numbers are illustrative.
 - Children and separated fragments inherit the source graph in this example. No hardcoded resource/remains type or functioning/inert flag is introduced.
 - Wait leaves material unchanged here. Wear is a separate manual probe; there is no pacing, population lifetime inference, autonomous FSM sampling or random choice. The lab has no simultaneous competing claims or mutation.
