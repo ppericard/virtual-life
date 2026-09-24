@@ -23,20 +23,26 @@ export function initial(scenario = 'repair', space = 'shared', acquisition = 'ta
       {actor:1, op:'move', x:2, y:1},
       ...(acquisition === 'take' ? [{actor:1, op:'take', target:2}] : []),
       {actor:1, op:'repair', target:2},
-      {actor:1, op:'wear'}, {actor:1, op:'release'},
+      {actor:1, op:'wear'},
       {actor:1, op:'repair', target:2},
     ];
   } else if (scenario === 'copy') {
     agents = [agent(1, 1, 1, 8, 9), agent(2, 2, 1, 0, 0, 5, graph(true))];
-    steps = [{actor:1, op:'copy', x:2, y:1}, {actor:1, op:'release'}, {actor:1, op:'copy', x:1, y:1}];
+    steps = [{actor:1, op:'copy', x:2, y:1}, {actor:1, op:'copy', x:1, y:1}];
   } else if (scenario === 'failure') {
     agents = [agent(1, 1, 1, 2, 1), agent(2, 2, 1, 4, 0)];
     steps = [{actor:1, op:'wear'}, {actor:1, op:'wear'},
       ...(acquisition === 'take' ? [{actor:2, op:'take', target:1}] : []),
       {actor:2, op:'repair', target:1}, {actor:1, op:'repair'}];
+  } else if (scenario === 'mutual') {
+    // Two active neighbours clear each other's wear; no other material source.
+    agents = [agent(1, 1, 1, 8, 0), agent(2, 2, 1, 8, 0)];
+    steps = [{actor:1, op:'wear'}, {actor:1, op:'wear'}, {actor:2, op:'wear'}, {actor:2, op:'wear'},
+      ...(acquisition === 'take' ? [{actor:1, op:'take', target:2}, {actor:2, op:'take', target:1}] : []),
+      {actor:1, op:'repair', target:2}, {actor:2, op:'repair', target:1}];
   } else {
     agents = [agent(1, 1, 1, 6, 1), agent(2, 2, 1, 0, 0, 16, graph(true))];
-    steps = [{actor:1, op:'move', x:2, y:1}, {actor:1, op:acquisition === 'take' ? 'take' : 'repair', target:2}, {actor:1, op:'release'}];
+    steps = [{actor:1, op:'move', x:2, y:1}, {actor:1, op:acquisition === 'take' ? 'take' : 'repair', target:2}];
   }
   const world = {scenario, space, acquisition, agents, steps, guide:0, step:0, nextId:3, message:'Choose Next worked step, or select agents and act manually.', history:[], before:null};
   world.initialMaterial = material(world);
@@ -115,19 +121,6 @@ export function apply(world, command) {
         const child = agent(next.nextId++, dest.x, dest.y, 3, 2, 0, a.graph);
         next.agents.push(child);
         messages.push(`Child #${child.id} receives 3 structure + 2 reserve, entirely funded by #${a.id}.`);
-      }
-    } else if (command.op === 'release') {
-      // Splitting off held loose material is a candidate generic transformation,
-      // manually invoked for inspection, not an automatic recycling service.
-      const dest = {x:command.x ?? a.x, y:command.y ?? a.y};
-      const amount = Math.min(3, a.loose), blocked = room(next, a, dest, amount, true);
-      if (!amount) messages.push('No loose material to separate.');
-      else if (blocked) messages.push(`${blocked} Loose material stays with #${a.id}; it is never discarded.`);
-      else {
-        a.loose -= amount;
-        const fragment = agent(next.nextId++, dest.x, dest.y, 0, 0, amount, a.graph);
-        next.agents.push(fragment);
-        messages.push(`#${a.id} separates ${amount} loose material into agent #${fragment.id}.`);
       }
     } else messages.push(`#${a.id} waits. Wear is a separate manual step in this laboratory.`);
     if (['wait','move','copy','repair','take'].includes(command.op)) a.last = command.op;
