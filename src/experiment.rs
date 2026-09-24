@@ -21,9 +21,9 @@ pub struct ExperimentConfig {
 impl Default for ExperimentConfig {
     fn default() -> Self {
         Self {
-            width: 32,
-            height: 24,
-            occupancy: 300_000,
+            width: 64,
+            height: 48,
+            occupancy: 50_000,
             automata: crate::automaton::PRESETS
                 .iter()
                 .map(|p| p.machine)

@@ -1,6 +1,6 @@
 import {test, expect, inspectAgent, openPanel} from './fixtures.js';
 
-test.use({serverArgs:['--mode','autonomous','--automaton-preset','mixed','--width','12','--height','9','--ticks','8','--tick-ms','60000']});
+test.use({serverArgs:['--mode','autonomous','--automaton-preset','mixed','--width','12','--height','9','--occupancy','0.3','--ticks','8','--tick-ms','60000']});
 async function snapshot(page,server) {return (await page.request.get(`${server.url}/api/snapshot`)).json();}
 test('graphs show actual probabilities, preserve observation and replay through preset restart',async({page,server},info)=> {
   await page.goto(server.url);

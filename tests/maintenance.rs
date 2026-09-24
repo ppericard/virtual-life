@@ -757,6 +757,7 @@ fn configuration_rejects_invalid_survival_settings_and_grouping_ignores_integrit
     let config = ExperimentConfig {
         width: 3,
         height: 3,
+        occupancy: 300_000,
         automata: vec![Weights([1, 0, 0, 0]); 2]
             .into_iter()
             .map(common::machine)
@@ -801,6 +802,7 @@ fn generated_wear_runs_keep_identities_positive_integrity_and_order_independent_
         let config = ExperimentConfig {
             width: 8,
             height: 6,
+            occupancy: 300_000,
             seed,
             ..ExperimentConfig::default()
         };

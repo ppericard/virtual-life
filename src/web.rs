@@ -674,6 +674,7 @@ mod tests {
             experiment: Some(crate::experiment::ExperimentConfig {
                 width: 8,
                 height: 6,
+                occupancy: 300_000,
                 ..Default::default()
             }),
             ..Config::default()
@@ -916,6 +917,7 @@ mod tests {
         let (_, _, info) = crate::experiment::ExperimentConfig {
             width: 3,
             height: 3,
+            occupancy: 300_000,
             automata: vec![crate::automaton::Automaton::default()],
             proportions: vec![1],
             maintenance: crate::engine::Maintenance {
@@ -1043,6 +1045,7 @@ mod slow_reader_test {
                 experiment: autonomous.then(|| crate::experiment::ExperimentConfig {
                     width: 8,
                     height: 6,
+                    occupancy: 300_000,
                     ..crate::experiment::ExperimentConfig::default()
                 }),
                 ..Config::default()

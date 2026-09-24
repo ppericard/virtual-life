@@ -11,7 +11,7 @@ async function save(page, info, name) {
   await info.attach(name, {path, contentType: 'image/png'});
 }
 
-test.use({serverArgs: ['--mode', 'autonomous', '--width', '8', '--height', '6', '--ticks', '12', '--tick-ms', '60000', '--crowding-threshold', '3', '--crowding-upkeep', '2']});
+test.use({serverArgs: ['--mode', 'autonomous', '--width', '8', '--height', '6', '--occupancy', '0.3', '--ticks', '12', '--tick-ms', '60000', '--crowding-threshold', '3', '--crowding-upkeep', '2']});
 
 test('preset choices stay pending until restart and synchronize both pages to the new run', async ({page, context, server}, info) => {
   await page.goto(server.url); await openPanel(page, 'New experiment');

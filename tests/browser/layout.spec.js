@@ -3,7 +3,7 @@ import { test, expect, waitForGridFit } from './fixtures.js';
 test.use({
   viewport: { width: 1680, height: 1000 },
   deviceScaleFactor: 2,
-  serverArgs: ['--mode', 'autonomous', '--width', '64', '--height', '48', '--ticks', '80'],
+  serverArgs: ['--mode', 'autonomous', '--width', '64', '--height', '48', '--occupancy', '0.3', '--ticks', '80'],
 });
 
 test.beforeEach(async ({page}) => {
@@ -304,7 +304,7 @@ test.describe('large-world coordinates', () => {
 
 test.describe('portrait world with fractional DPR', () => {
   test.use({viewport:{width:1280,height:900},deviceScaleFactor:1.25,
-    serverArgs:['--mode','autonomous','--width','6','--height','11','--ticks','5']});
+    serverArgs:['--mode','autonomous','--width','6','--height','11','--occupancy','0.3','--ticks','5']});
   test('square cells and undistorted labels retain exact portrait hit targets', async ({page,server}, info) => {
     await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
     const before = await (await page.request.get(`${server.url}/api/snapshot`)).json();

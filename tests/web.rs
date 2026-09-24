@@ -20,6 +20,7 @@ fn automaton_presets_replay_the_engine_and_publish_exact_next_choice_tickets() {
     let settings = ExperimentConfig {
         width: 9,
         height: 7,
+        occupancy: 300_000,
         ..Default::default()
     };
     let server = Server::start(Config {
