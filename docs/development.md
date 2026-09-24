@@ -35,12 +35,12 @@ Keep behaviour in the Rust chooser/engine. The browser draws the server's exact 
 ```sh
 cargo run --locked --features web --bin web
 cargo run --locked --no-default-features --bin headless -- --seed 42 --ticks 500
-cargo run --locked --features web --bin web -- --automaton-preset copy-bursts --width 64 --height 48 --occupancy 0.05
-cargo run --locked --features web --bin web -- --automaton-preset open-world --width 64 --height 48 --occupancy 0.05 --ticks 10000
+cargo run --locked --features web --bin web -- --automaton-preset copy-bursts
+cargo run --locked --features web --bin web -- --automaton-preset open-world --ticks 10000
 cargo run --locked --no-default-features --bin headless -- --mode demo --ticks 5
 ```
 
-Default CLI mode is **autonomous**: 32 x 24, occupancy 0.3, mixed FSMs in equal shares, seed 1 and 500 ticks. Web starts paused, paced at 100 ms per tick; headless runs without pacing. Explicit demo mode defaults to five ticks; 0 reports its initial fixture and requests past 5 add all-wait ticks.
+Default CLI mode is **autonomous**: 64 x 48, occupancy 0.05, mixed FSMs in equal shares, seed 1 and 500 ticks. Web starts paused, paced at 100 ms per tick; headless runs without pacing. Explicit demo mode defaults to five ticks; 0 reports its initial fixture and requests past 5 add all-wait ticks.
 
 | Option | Meaning |
 |---|---|

@@ -43,7 +43,7 @@ test.describe('stored selected action inspection', () => {
 });
 
 test.describe('wear and repair default experiment', () => {
-  test.use({serverArgs:['--mode','autonomous','--width','8','--height','6','--ticks','80','--tick-ms','0']});
+  test.use({serverArgs:['--mode','autonomous','--width','8','--height','6','--occupancy','0.3','--ticks','80','--tick-ms','0']});
   test('live integrity recovers, properties remain stable and completion keeps failure evidence', async ({page,server},info) => {
     await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
     await expect(page.locator('#action-order')).toHaveText('Wait / move / copy / repair');
@@ -161,7 +161,7 @@ test.describe('bounded failures independent of sampling', () => {
 });
 
 test.describe('autonomous visual experiment', () => {
-  test.use({serverArgs:['--mode','autonomous','--width','8','--height','6','--seed','1','--ticks','80','--tick-ms','25']});
+  test.use({serverArgs:['--mode','autonomous','--width','8','--height','6','--occupancy','0.3','--seed','1','--ticks','80','--tick-ms','25']});
   test('property colours, grid click, population trajectories and long completion', async ({page,server}, info) => {
     await page.goto(server.url);
     await expect(page.locator('#tick')).toHaveText('0');
@@ -227,7 +227,7 @@ test.describe('autonomous visual experiment', () => {
 });
 
 test.describe('canonical zero groups and extinction', () => {
-  test.use({serverArgs:['--mode','autonomous','--width','8','--height','6','--automata', 'wait:0,0,0,1/0,0,0,1/0,0,0,1/0,0,0,1;wait:0,0,0,1/0,0,0,1/0,0,0,1/0,0,0,1;wait:1,0,0,0/1,0,0,0/1,0,0,0/1,0,0,0;wait:0,1,0,0/0,1,0,0/0,1,0,0/0,1,0,0','--integrity','1','--proportions','1,1,0,0','--ticks','20','--tick-ms','0']});
+  test.use({serverArgs:['--mode','autonomous','--width','8','--height','6','--occupancy','0.3','--automata', 'wait:0,0,0,1/0,0,0,1/0,0,0,1/0,0,0,1;wait:0,0,0,1/0,0,0,1/0,0,0,1/0,0,0,1;wait:1,0,0,0/1,0,0,0/1,0,0,0/1,0,0,0;wait:0,1,0,0/0,1,0,0/0,1,0,0/0,1,0,0','--integrity','1','--proportions','1,1,0,0','--ticks','20','--tick-ms','0']});
   test('duplicate graphs aggregate and every extinct/zero series retains its label', async ({page,server},info) => {
     await page.goto(server.url); await expect(page.locator('#tick')).toHaveText('0');
     await expect(page.locator('#legend .group-row')).toHaveCount(3);

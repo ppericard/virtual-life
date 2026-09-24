@@ -16,6 +16,7 @@ fn settings() -> ExperimentConfig {
     ExperimentConfig {
         width: 8,
         height: 6,
+        occupancy: 300_000,
         ..ExperimentConfig::default()
     }
 }
@@ -371,11 +372,13 @@ fn fixed_tick_results_ignore_observation_rate_backpressure_and_disconnect() {
         check_observation_independence(ExperimentConfig {
             width: 8,
             height: 6,
+            occupancy: 300_000,
             ..ExperimentConfig::default()
         });
         check_observation_independence(ExperimentConfig {
             width: 8,
             height: 6,
+            occupancy: 300_000,
             maintenance: virtual_life::engine::Maintenance {
                 crowding_upkeep: 0,
                 ..Default::default()
@@ -386,6 +389,7 @@ fn fixed_tick_results_ignore_observation_rate_backpressure_and_disconnect() {
         check_observation_independence(ExperimentConfig {
             width: 5,
             height: 5,
+            occupancy: 300_000,
             maintenance: virtual_life::engine::Maintenance {
                 upkeep: 0,
                 crowding_upkeep: 0,

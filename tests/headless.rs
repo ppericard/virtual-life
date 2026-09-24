@@ -205,7 +205,16 @@ fn invalid_headless_arguments_fail_with_a_message() {
 fn mixed_fsm_seed_one_preserves_the_pre_cleanup_world_and_failure_records() {
     let output = Command::new(env!("CARGO_BIN_EXE_headless"))
         .args([
-            "--width", "8", "--height", "6", "--seed", "1", "--ticks", "10",
+            "--width",
+            "8",
+            "--height",
+            "6",
+            "--occupancy",
+            "0.3",
+            "--seed",
+            "1",
+            "--ticks",
+            "10",
         ])
         .output()
         .unwrap();

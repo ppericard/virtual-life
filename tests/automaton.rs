@@ -348,6 +348,7 @@ fn blocked_move_advances_the_graph_and_seeded_populations_preserve_invariants() 
             seed,
             width: 13,
             height: 9,
+            occupancy: 300_000,
             automata: virtual_life::automaton::catalog()
                 .map(|p| p.machine)
                 .collect(),
@@ -377,11 +378,25 @@ fn blocked_move_advances_the_graph_and_seeded_populations_preserve_invariants() 
 #[test]
 fn ordinary_launch_uses_the_mixed_fsm_population() {
     let config = launch::parse(Vec::<String>::new(), false).unwrap().config;
+    let experiment = config.experiment.unwrap();
     assert_eq!(
-        config.experiment.unwrap().automata,
+        experiment.automata,
         PRESETS.iter().map(|p| p.machine).collect::<Vec<_>>()
     );
     assert_eq!(config.ticks, 500);
+    assert_eq!(
+        (experiment.width, experiment.height, experiment.occupancy),
+        (64, 48, 50_000)
+    );
+    let (world, _, info) = experiment.initialize().unwrap();
+    assert_eq!(world.count(), 153);
+    assert_eq!(
+        info.groups
+            .iter()
+            .map(|g| g.initial_count)
+            .collect::<Vec<_>>(),
+        [39, 38, 38, 38]
+    );
 }
 
 #[test]
