@@ -83,6 +83,8 @@ export function apply(world, command) {
   else {
     const target = next.agents.find(b => b.id === command.target);
     if (command.op === 'wear') wear(a, 1, messages);
+    // Decided 24 September 2026: collecting needs structure; Repair does not.
+    else if (command.op === 'take' && !a.structure) messages.push(`#${a.id} cannot Take: Take needs at least 1 structure. Repair has no structural requirement.`);
     else if (command.op === 'take') take(next, a, target, 3, messages);
     else if (command.op === 'repair') {
       const need = Math.min(4, 10 - a.structure);
