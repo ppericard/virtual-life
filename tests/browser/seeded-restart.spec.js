@@ -29,7 +29,7 @@ async function mutationsLocked(page) {
 }
 
 test.describe('seeded web restarts', () => {
-  test.use({ serverArgs: ['--mode', 'autonomous', '--width', '8', '--height', '6', '--ticks', '12', '--tick-ms', '60000', '--crowding-threshold', '3', '--crowding-upkeep', '2'] });
+  test.use({ serverArgs: ['--mode', 'autonomous', '--width', '8', '--height', '6', '--occupancy', '0.3', '--ticks', '12', '--tick-ms', '60000', '--crowding-threshold', '3', '--crowding-upkeep', '2'] });
 
   test('fixed seed replays initial and final worlds, clears both pages and wraps on narrow screens', async ({ page, context, server }, info) => {
     await page.goto(server.url); await ready(page);

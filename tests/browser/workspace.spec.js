@@ -1,6 +1,6 @@
 import { test, expect, openPanel, waitForGridFit } from './fixtures.js';
 
-test.use({serverArgs:['--mode','autonomous','--width','64','--height','48','--ticks','160','--tick-ms','0']});
+test.use({serverArgs:['--mode','autonomous','--width','64','--height','48','--occupancy','0.3','--ticks','160','--tick-ms','0']});
 
 test('the complete world and exact counts fit the first desktop and narrow screen', async ({page,server},info) => {
   for(const size of [{width:1280,height:900},{width:1680,height:1000},{width:390,height:844}]) {
